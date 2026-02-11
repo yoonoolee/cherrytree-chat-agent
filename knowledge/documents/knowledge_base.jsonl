@@ -1,0 +1,3 @@
+{"id": "test_001", "topic": "equity", "title": "Test: Equal Splits", "content": "Equal 50/50 equity splits work best when both cofounders contribute equally in time, skills, capital, and risk. Should always be paired with vesting."}
+{"id": "test_002", "topic": "vesting", "title": "Test: Standard Vesting", "content": "The industry standard vesting schedule is 4 years with a 1-year cliff. No equity vests for the first 12 months. After the cliff, 25% vests immediately, remaining vests monthly."}
+{"id": "test_003", "topic": "ip", "title": "Test: IP Assignment", "content": "All cofounders should assign their intellectual property to the company. Without IP assignment, each cofounder technically owns whatever they personally created."}
