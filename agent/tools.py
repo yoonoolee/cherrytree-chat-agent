@@ -25,7 +25,7 @@ def rag_search(query: str) -> str:
     # and finds the most similar documents
     results = pinecone_index.search(
         namespace="cherrytree",
-        query={"top_k": 5, "inputs": {"text": query}},
+        query={"top_k": 3, "inputs": {"text": query}},
         fields=["title", "content", "topic"]
     )
 
@@ -39,7 +39,7 @@ def rag_search(query: str) -> str:
         fields = hit.get("fields", {})
         score = hit.get("_score", 0)
         # Only include results with a reasonable similarity score
-        if score < 0.5:
+        if score < 0.7:
             continue
         context_parts.append(
             f"[{fields.get('title', 'Untitled')}] (relevance: {score:.2f})\n"

@@ -25,7 +25,7 @@ load_dotenv(override=True)
 
 # Import the agent runner and chat store (must come after load_dotenv so the API key is available)
 from agent.graph import run_agent
-from agent.chat_store import load_user_chats, delete_chat
+from agent.chat_store import load_user_chats, load_chat, delete_chat
 
 # Resolve the project root directory for serving static files
 BASE_DIR = Path(__file__).resolve().parent
@@ -120,6 +120,15 @@ def get_user_chats(user_id: str, project_id: str = ""):
     """List all chats for a user, optionally filtered by project."""
     chats = load_user_chats(user_id, project_id or None)
     return {"chats": chats}
+
+
+@app.get("/chat/{chat_id}")
+def get_chat(chat_id: str):
+    """Get a single chat with its full message history."""
+    chat = load_chat(chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
 
 
 @app.post("/feedback")

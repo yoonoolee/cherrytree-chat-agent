@@ -2,6 +2,52 @@
 
 AI-powered advisory agent that helps users navigate complex cofounder situations, understand legal concepts, and fill out their cofounder agreement with contextual, scenario-based guidance.
 
+## Implementation Status
+
+### ✅ Completed (Local Development)
+- [x] FastAPI server running on localhost:8000
+- [x] Basic LangGraph agent orchestration
+- [x] System prompt with optimized structure (identity → thinking → communication → operational)
+- [x] Chat storage in Firestore (create, load, list, delete)
+- [x] Test UI with ChatGPT-style centered layout
+- [x] Conversation history persistence across sessions
+- [x] Feedback mechanism (thumbs up/down)
+- [x] AI safety guardrails (pronoun usage, data integrity, conversation memory)
+- [x] Core endpoints: POST /chat, GET /health, GET /chat/{chat_id}, GET /chats/{user_id}, DELETE /chats/{chat_id}
+- [x] LangSmith integration (currently disabled for testing)
+
+### 🚧 In Progress / Next Steps
+- [x] **Knowledge Base (P0)** - 21 Cherrytree articles ingested into Pinecone ⚠️ **See Known Issues below**
+- [ ] **Fix RAG Tool Usage (P0)** - Agent not calling rag_search when it should
+- [ ] **Verify Knowledge Base Content Quality (P0)** - Some articles may be summarized instead of full source
+- [ ] **Additional Tools (P0)** - Implement suggest_form_value, calculate_equity
+- [ ] **AI Safety Enhancements (P1)** - Add abuse/manipulation recognition, mental health boundaries
+- [ ] **Evaluation Pipeline (P1)** - Implement retrieval precision, citation analysis, user feedback metrics
+- [ ] **Production Auth (P0)** - Firebase Functions gateway with Clerk verification
+- [ ] **React Component (P1)** - AdvisorChat.js sidebar for production UI
+- [ ] **Rate Limiting (P0)** - Per-user and global limits
+- [ ] **Cost Controls (P0)** - Spending limits, circuit breakers
+- [ ] **Cloud Run Deployment (P1)** - Production deployment with secrets management
+- [ ] **Monitoring (P1)** - Error tracking, observability, alerts
+
+### ⚠️ Known Issues
+
+**RAG Tool Not Being Used (2026-02-11)**
+- Agent is NOT calling `rag_search` when answering cofounder questions
+- Currently relying on general training data instead of Pinecone knowledge base
+- Example: Asked "how to handle lazy cofounder" → agent answered without searching, even though relevant article exists
+- **Impact:** The 21 curated articles aren't being utilized; responses not grounded in specific content
+- **Fix needed:** Update system prompt to encourage/require RAG usage for cofounder questions
+- **Alternatives:** Make rag_search mandatory for certain question types, adjust tool description
+
+**Pinecone Content May Be Summaries (2026-02-11)**
+- Some articles in knowledge_base.jsonl appear to be condensed/summarized rather than full raw source text
+- Example: Narcissist cofounder article shows bullet points instead of complete narrative
+- **Cause:** WebFetch tool uses AI model to extract content, which naturally condenses
+- **Impact:** Summaries lose nuance, examples, stories, and detailed context needed for quality RAG
+- **Fix needed:** Re-fetch articles using raw HTML parsing instead of WebFetch AI extraction
+- **Current state:** 21 articles (84 KB), may need re-ingestion with fuller content
+
 ## Overview
 
 - Embedded in the Survey page as a chat sidebar
@@ -259,24 +305,104 @@ Critical for a product that gives guidance affecting real business relationships
 
 ## Evaluation Pipeline
 
-Automated quality testing to ensure the agent gives good advice consistently.
+Automated quality testing to ensure the agent gives good advice consistently. Uses deterministic metrics and real user feedback rather than LLM-as-judge approaches.
 
-### Components
+### Evaluation Metrics
 
-| Component | Purpose |
-|---|---|
-| **Test suite** | 50+ scenario questions with expected answer qualities |
-| **LLM-as-judge** | A second LLM scores agent responses on accuracy, helpfulness, safety |
-| **Regression tests** | Run against every prompt or knowledge base change |
-| **Hallucination detection** | Cross-reference agent claims against RAG knowledge base |
-| **Human eval** | Periodic review of flagged responses and random samples |
+| Metric | What It Measures | How It Works | Status |
+|---|---|---|---|
+| **Success@3** | RAG quality - does retrieval find at least one good article? | Query Pinecone with test questions. Binary: found relevant article in top 3? Target: 90%+ | ✅ Implemented |
+| **Citation Rate** | Response grounding - does the agent reference source material? | Automated check: % of responses containing phrases/concepts from retrieved docs. Target: 90%+ | ⏸️ On hold - needs RAG tool to be called by agent first |
+| **User Approval Rate** | Real-world quality - do users like the responses? | Track thumbs up/down ratio from production Firestore feedback. Target: 80%+ approval | ✅ Ready (needs production data) |
+| **Response Format Checks** | Safety & structure - does response follow guidelines? | Rules-based: contains disclaimer, reasonable length, asks follow-ups when needed | ⏸️ On hold - needs RAG tool to be called by agent first |
 
-### Test Categories
-- Simple definitions (should be accurate and concise)
-- Complex scenarios (should ask follow-ups, give nuanced advice)
-- Out-of-scope questions (should decline gracefully)
-- Adversarial inputs (should maintain safety guardrails)
-- Form suggestions (should be reasonable for the given context)
+**Current Results (2026-02-11):**
+- Success@3: **90%** (9/10 test queries find relevant article)
+- Retrieval scores: 0.82-0.88 (strong semantic similarity)
+
+### Why Success@K Instead of Precision@K
+
+**Success@K** (binary: did we find at least one good article?) is better for RAG than Precision@K because:
+- Simpler: only need to define one relevant article per query
+- Practical: RAG just needs ONE good source for the agent
+- Industry standard: used by Pinecone, OpenAI for RAG evaluation
+- Interpretable: 90% = 9 out of 10 queries worked
+
+**Precision@K** would require labeling ALL relevant articles in the knowledge base for each query (time-consuming and subjective).
+
+### Retrieval Evaluation Process
+
+```python
+# eval/test_retrieval.py
+# Test cases with ground truth (which article should match)
+TEST_CASES = [
+    {"query": "How to handle lazy cofounder?", "relevant_ids": ["help-my-cofounder-is-lazy"]},
+    {"query": "Chemistry vs credentials?", "relevant_ids": ["credentials-or-chemistry"]},
+    # ... currently 10 test cases
+]
+
+# Query Pinecone, calculate Success@3
+for test in TEST_CASES:
+    results = index.search(test["query"], top_k=3)
+    success = 1.0 if any(relevant_id in results for relevant_id in test["relevant_ids"]) else 0.0
+
+success_rate = total_success / len(TEST_CASES)
+```
+
+**⚠️ TODO:** Expand test cases from 10 to 50+ to cover:
+- All article topics comprehensively
+- Edge cases and ambiguous queries
+- Multiple phrasings of same question
+- Questions requiring multiple relevant articles
+
+### Citation Grounding Check
+
+**⚠️ ON HOLD:** Citation testing requires the agent to actually call the RAG tool and use retrieved content. Currently the agent is not calling `rag_search` (see Known Issues). Once RAG tool usage is fixed, we can:
+1. Capture real agent responses to test queries
+2. Verify responses contain concepts from retrieved articles
+3. Calculate citation rate to validate grounding
+
+```python
+# eval/test_citation.py (implemented, needs real responses to test)
+def check_grounding(response, retrieved_docs):
+    # Extract key concepts from source docs
+    source_concepts = extract_key_phrases(retrieved_docs)
+
+    # Count how many appear in response
+    citations = sum(1 for concept in source_concepts
+                   if concept.lower() in response.lower())
+
+    return citations / len(source_concepts)  # 0-1 score
+```
+
+### User Feedback Analysis
+
+```python
+# eval/analyze_feedback.py
+# Query Firestore for production feedback
+thumbs_up = count_feedback(score=1)
+thumbs_down = count_feedback(score=0)
+approval_rate = thumbs_up / (thumbs_up + thumbs_down)
+
+# Track over time, by topic, by section
+```
+
+### Test Categories (Current: 10 cases)
+
+**Retrieval Tests (eval/test_retrieval.py):**
+- Cofounder traits (3 queries): lazy, narcissist, paranoid
+- Cofounder selection (3 queries): credentials vs chemistry, technical cofounder, what makes cofounder material
+- Best practices (1 query): 15 rules
+- Conflict resolution (1 query): how to destroy cofoundership
+- Relationship dynamics (1 query): building great relationships
+- Communication (1 query): avoiding tough conversations
+
+**Agent Response Tests (planned):**
+- Simple definitions - Accurate and concise answers citing source material
+- Complex scenarios - Agent asks follow-ups, gives nuanced advice grounded in knowledge base
+- Out-of-scope questions - Declines gracefully with appropriate boundaries
+- Adversarial inputs - Maintains safety guardrails and legal disclaimers
+- Form suggestions - Reasonable values with clear reasoning from retrieved context
 
 ## Frontend Component
 
@@ -557,3 +683,98 @@ This ensures even if someone bypasses the API, Firestore itself rejects unauthor
 - Monitor token usage per user/project via LangSmith
 - Add a circuit breaker: if a single request exceeds N tool calls or N tokens, terminate it
 - Alert on unusual usage patterns
+
+---
+
+## Immediate Next Steps (Prioritized)
+
+### Phase 1: Core Functionality (Week 1-2)
+**Goal:** Make the agent actually useful by giving it knowledge and tools
+
+1. **Knowledge Base Ingestion (P0)**
+   - Create 50-100 curated documents covering:
+     - Scenario playbooks (part-time cofounders, family members, unequal capital)
+     - Equity frameworks (Slicing Pie, fixed splits, milestone vesting)
+     - Common failure modes and red flags
+   - Format as JSONL in `knowledge/documents/`
+   - Run `python knowledge/ingest.py` to embed and upload to Pinecone
+   - **Blocker:** Without this, the agent is just generic ChatGPT
+
+2. **Test the Agent (P0)**
+   - Run through 10-15 realistic cofounder scenarios
+   - Verify pronoun usage, response format, data integrity
+   - Check that it uses RAG search appropriately
+   - Document any issues or hallucinations
+
+3. **AI Safety Enhancements (P1)**
+   - Add to system prompt:
+     - Abuse/manipulation pattern recognition
+     - Mental health boundary guidance (suggest professional help when appropriate)
+   - Test with adversarial inputs
+
+### Phase 2: Production-Ready Tools (Week 3-4)
+**Goal:** Enable the agent to actually help with form filling
+
+4. **Implement Additional Tools**
+   - `suggest_form_value` - Propose values for form fields with reasoning
+   - `check_completion` - Identify incomplete survey sections
+   - `calculate_equity` - Run equity split scenarios
+
+5. **Evaluation Pipeline**
+   - Build test suite with 50+ scenario questions
+   - Set up LLM-as-judge for automated scoring
+   - Run regression tests before prompt/knowledge changes
+
+### Phase 3: Production Deployment (Week 5-6)
+**Goal:** Ship to real users safely
+
+6. **Authentication & Security**
+   - Create Firebase Function gateway with Clerk verification
+   - Lock down CORS to production domains only
+   - Add Firestore security rules for chat subcollection
+
+7. **Rate Limiting & Cost Controls**
+   - Per-user limits (50 messages/hour)
+   - Circuit breaker for runaway requests
+   - Spending alerts on Anthropic account
+
+8. **Cloud Run Deployment**
+   - Deploy to Cloud Run with secrets management
+   - Set up monitoring and error tracking
+   - Configure auto-scaling
+
+9. **React Frontend Component**
+   - Build `AdvisorChat.js` sidebar component
+   - Integrate into Survey page
+   - Add suggested questions based on current section
+
+### Phase 4: Iterate & Improve (Ongoing)
+**Goal:** Continuously improve based on real usage
+
+10. **Monitor & Tune**
+    - Re-enable LangSmith for observability
+    - Analyze user feedback (thumbs up/down)
+    - Identify knowledge gaps from real questions
+    - Expand knowledge base based on usage patterns
+
+11. **Advanced Features** (Future)
+    - Multi-agent split (Legal Advisor, Form Assistant, Review Agent)
+    - State-specific law lookup tool
+    - Equity calculator integration
+    - Long-term memory across projects
+
+---
+
+## Quick Wins for This Week
+
+1. **Create initial knowledge base** (10-20 documents minimum)
+   - Focus on most common scenarios: equity splits, vesting, part-time cofounders
+   - Test that RAG retrieval works
+
+2. **Add mental health/abuse safety guardrails** to system prompt
+   - Pattern recognition for manipulation/harassment
+   - Guidance to redirect to appropriate professional help
+
+3. **Run manual testing** with realistic scenarios
+   - Document what works, what doesn't
+   - Build initial test cases for eval pipeline
