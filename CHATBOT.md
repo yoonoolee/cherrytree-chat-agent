@@ -17,7 +17,7 @@ AI-powered advisory agent that helps users navigate complex cofounder situations
 - [x] LangSmith integration (currently disabled for testing)
 
 ### 🚧 In Progress / Next Steps
-- [x] **Knowledge Base (P0)** - 21 Cherrytree articles ingested into Pinecone ⚠️ **See Known Issues below**
+- [ ] **Knowledge Base (P0)** - 21 Cherrytree articles ingested into Pinecone. Need to add the rest. 
 - [ ] **Fix RAG Tool Usage (P0)** - Agent not calling rag_search when it should
 - [ ] **Verify Knowledge Base Content Quality (P0)** - Some articles may be summarized instead of full source
 - [ ] **Additional Tools (P0)** - Implement suggest_form_value, calculate_equity
@@ -29,24 +29,22 @@ AI-powered advisory agent that helps users navigate complex cofounder situations
 - [ ] **Cost Controls (P0)** - Spending limits, circuit breakers
 - [ ] **Cloud Run Deployment (P1)** - Production deployment with secrets management
 - [ ] **Monitoring (P1)** - Error tracking, observability, alerts
+- [ ] **Advanced Agents** - Create Lawyer and VC Agents 
 
 ### ⚠️ Known Issues
 
-**RAG Tool Not Being Used (2026-02-11)**
-- Agent is NOT calling `rag_search` when answering cofounder questions
-- Currently relying on general training data instead of Pinecone knowledge base
+**Evaluate RAG Tool Usage**
+- Agent should be calling `rag_search` when answering cofounder questions more often.  
+- Currently relying on general training data instead of Pinecone knowledge base more than it should. 
 - Example: Asked "how to handle lazy cofounder" → agent answered without searching, even though relevant article exists
-- **Impact:** The 21 curated articles aren't being utilized; responses not grounded in specific content
-- **Fix needed:** Update system prompt to encourage/require RAG usage for cofounder questions
+- **TODO:** Update system prompt to encourage/require RAG usage 
 - **Alternatives:** Make rag_search mandatory for certain question types, adjust tool description
 
 **Pinecone Content May Be Summaries (2026-02-11)**
-- Some articles in knowledge_base.jsonl appear to be condensed/summarized rather than full raw source text
-- Example: Narcissist cofounder article shows bullet points instead of complete narrative
-- **Cause:** WebFetch tool uses AI model to extract content, which naturally condenses
-- **Impact:** Summaries lose nuance, examples, stories, and detailed context needed for quality RAG
-- **Fix needed:** Re-fetch articles using raw HTML parsing instead of WebFetch AI extraction
-- **Current state:** 21 articles (84 KB), may need re-ingestion with fuller content
+- Some articles in knowledge_base.jsonl are condensed/summarized rather than full raw source text
+- Currently testing out summaries vs raw source text, starting with summaries. If summaries don't work well then try raw source text. 
+- **TODO:** Try using raw source text instead. 
+- **Current state:** 21 articles (84 KB). Later ingest the rest of the documents after testing out summary vs raw source text. 
 
 ## Overview
 
@@ -82,7 +80,7 @@ AI-powered advisory agent that helps users navigate complex cofounder situations
     │          LangGraph Orchestrator          │
     │                                          │
     │  ┌────────────────────────────────────┐  │
-    │  │         Agent (single node)        │  │
+    │  │             Agent                  │  │
     │  │  - System prompt with XML tags     │  │
     │  │  - Chain-of-thought reasoning      │  │
     │  │  - Multi-turn conversation state   │  │
@@ -125,10 +123,6 @@ AI-powered advisory agent that helps users navigate complex cofounder situations
 | Embeddings | OpenAI text-embedding-3-small | Cost-effective, high quality |
 | Observability | LangSmith | Trace agent reasoning, monitor quality |
 | Frontend | React component | Existing stack |
-
-## Knowledge Base
-
-The knowledge base is the core differentiator. Without it, the agent is just a slightly more conversational ChatGPT. With it, the agent knows more about cofounder situations than the user does.
 
 ### Content Types to Index
 
@@ -762,6 +756,18 @@ This ensures even if someone bypasses the API, Firestore itself rejects unauthor
     - State-specific law lookup tool
     - Equity calculator integration
     - Long-term memory across projects
+
+---
+
+## Planned Agent Expansions
+
+### Lawyer Agent (Planned)
+
+The core advisor is intentionally kept accessible and educational. The Lawyer Agent is a planned expansion focused on deeper legal analysis — things like interpreting specific clause language, flagging enforceability issues by state, and surfacing relevant legal precedents. The goal is to help users understand the legal weight of what they're agreeing to, while always making clear this is educational guidance and not a substitute for an actual attorney.
+
+### VC Agent (Planned)
+
+Many cofounder agreement decisions have downstream effects on fundraising that founders don't always think about upfront — equity splits, vesting structures, and control provisions all come up in investor due diligence. The VC Agent is a planned expansion to help cofounders understand how their agreement looks from an investor's perspective and what to think through before they lock anything in.
 
 ---
 
