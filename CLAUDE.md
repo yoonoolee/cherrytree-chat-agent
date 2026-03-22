@@ -1,0 +1,127 @@
+# cherrytree-chat-agent — Claude Context
+
+Python/FastAPI AI advisor service. Runs on Google Cloud Run. Integrated into the Cherrytree web app as a chat sidebar.
+
+## Stack
+
+- **LLM:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)
+- **Agent framework:** LangGraph (ReAct pattern — reason → tool call → reason)
+- **Vector DB:** Pinecone (RAG, top-k=3, similarity threshold 0.7)
+- **Embeddings:** OpenAI `text-embedding-3-small`
+- **Chat storage:** Firestore (`projects/{projectId}/chats/{chatId}`)
+- **Observability:** LangSmith
+- **Rate limiting:** slowapi (20/min + 200/hour per IP on `/chat` — blocks burst and sustained abuse)
+- **Runtime:** Google Cloud Run (us-west2), scales to zero
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `main.py` | FastAPI entry point. Routes: `/chat`, `/health`, `/chats`, `/feedback` |
+| `agent/graph.py` | LangGraph graph definition, model config, ReAct loop |
+| `agent/state.py` | `AgentState` schema (messages, project_id, section, completion %) |
+| `agent/tools.py` | Tool definitions — `rag_search`, `read_form_data`, `check_completion` |
+| `agent/chat_store.py` | Firestore read/write for chat history |
+| `agent/services.py` | Pinecone + Firestore client initialization |
+| `prompts/advisor_prompt.py` | System prompt builder (XML-structured, ~150 lines, injected with dynamic context) |
+| `knowledge/documents/knowledge_base.jsonl` | 21 curated articles on cofounder scenarios |
+| `knowledge/ingest.py` | Embeds docs and uploads to Pinecone |
+| `eval/run_evaluation.py` | Master eval runner |
+| `eval/test_retrieval.py` | Measures RAG Success@3 |
+| `eval/test_citation.py` | Measures citation grounding |
+
+## Local Dev
+
+```bash
+source venv/bin/activate
+cp .env.example .env  # fill in keys first time
+uvicorn main:app --reload
+# → http://localhost:8000 (test UI) or POST /chat
+```
+
+## Agent Tools
+
+1. **`rag_search`** — semantic search over Pinecone knowledge base
+2. **`read_form_data`** — fetch user's current survey answers from Firestore
+3. **`check_completion`** — report which sections are complete/incomplete
+
+Planned (not yet built): `suggest_form_value`, `calculate_equity`, `lookup_state_law`
+
+## Known Issues
+
+- **RAG tool underuse:** Agent doesn't call `rag_search` frequently enough. Fix focus: tweak system prompt instructions or tool descriptions to encourage more retrieval.
+- **Small knowledge base:** Only 21 articles ingested. More pending after validating summaries vs. raw text format.
+- **Citation grounding eval:** Can't run meaningfully until RAG usage is fixed.
+
+## Adding a Tool
+
+1. Define it with `@tool` decorator in `agent/tools.py`
+2. Add it to the tools list in `agent/graph.py`
+3. Update `prompts/advisor_prompt.py` capabilities section if needed
+4. Re-ingest knowledge if adding domain content: `python knowledge/ingest.py`
+
+## System Prompt Design
+
+- XML-structured (`<role>`, `<instructions>`, `<capabilities>`, `<limitations>`)
+- Dynamically injected: current section, completion %, project context
+- Key constraints: educational only (not legal advice), pronoun-neutral (they/them default), always recommend consulting a lawyer
+
+## Knowledge Content to Index
+
+Priority order for expanding the knowledge base beyond the current 21 articles:
+
+| Content Type | Examples | Priority |
+|---|---|---|
+| Scenario playbooks | Part-time cofounders, family members, unequal capital, tech vs non-tech | P0 |
+| Equity frameworks | Slicing Pie, fixed splits, milestone vesting, capital contribution credits | P0 |
+| Common failure modes | No buyout clause, vesting disasters, IP assignment gaps, decision deadlock | P1 |
+| Legal patterns by state | Delaware LLC defaults, CA non-compete rules, NY partnership law | P1 |
+| Templates & precedents | YC agreement, Stripe Atlas, Orrick open-source templates | P1 |
+| Industry benchmarks | Typical equity splits by role, standard vesting, salary deferrals | P2 |
+| FAQ & definitions | What is vesting, cliff, IP assignment, shotgun clause | P2 |
+
+Format for JSONL documents:
+```jsonl
+{"id": "unique-slug", "topic": "equity", "title": "Short Title", "content": "Full content here..."}
+```
+
+After adding docs: `python knowledge/ingest.py` to embed and upload to Pinecone.
+
+Currently testing **summaries vs. raw source text** — 21 summary articles ingested. Switch to raw source if quality is insufficient.
+
+## Production Readiness
+
+See `TODO.md` for the full pre-launch checklist including Cloud Run deployment steps, the Firebase Function gateway (auth fix), and cost controls.
+
+## Roadmap
+
+**Phase 1 — Make the agent useful (current focus)**
+- Fix RAG tool underuse (P0)
+- Expand knowledge base to 50-100 articles (P0)
+- Implement `suggest_form_value` and `calculate_equity` tools (P0)
+- Add abuse/mental health boundary guardrails to system prompt (P1)
+
+**Phase 2 — Production-ready**
+- Firebase Function gateway with Clerk auth
+- Rate limiting + cost controls
+- Cloud Run deployment with Secret Manager
+- Build `AdvisorChat.js` React component and integrate into Survey page
+
+**Phase 3 — Iterate**
+- Re-enable LangSmith, analyze user feedback
+- Expand eval test suite from 10 → 50+ cases
+- Add state law lookup tool
+
+**Future agents (planned)**
+- **Lawyer Agent** — deeper legal analysis, clause interpretation, enforceability by state
+- **VC Agent** — investor perspective on agreement terms, fundraising implications
+
+## Deploy to Cloud Run
+
+```bash
+gcloud builds submit --tag gcr.io/PROJECT_ID/cherrytree-chat-agent
+gcloud run deploy cherrytree-chat-agent \
+  --image gcr.io/PROJECT_ID/cherrytree-chat-agent \
+  --region us-west2 \
+  --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest
+```
