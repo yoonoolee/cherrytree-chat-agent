@@ -1,0 +1,19 @@
+# Secrets — never bake these into the image
+.env
+*.json
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Dev/test files
+eval/
+.pytest_cache/
+*.log
+
+# Git
+.git/
+.gitignore

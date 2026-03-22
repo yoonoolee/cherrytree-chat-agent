@@ -10,7 +10,8 @@ Local:  uvicorn main:app --reload --port 8000
 Prod:   Deployed on Google Cloud Run
 """
 
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -18,6 +19,9 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from pathlib import Path
 from langsmith import Client as LangSmithClient
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Load environment variables from .env file (API keys, etc.)
 # override=True ensures .env values take precedence over any existing env vars
@@ -30,22 +34,36 @@ from agent.chat_store import load_user_chats, load_chat, delete_chat
 # Resolve the project root directory for serving static files
 BASE_DIR = Path(__file__).resolve().parent
 
+# Rate limiter — limits how many requests a single IP can make.
+# This prevents abuse (e.g., someone spamming the chat endpoint and running up API costs).
+limiter = Limiter(key_func=get_remote_address)
+
 # Create the FastAPI app
 app = FastAPI(
     title="Cherrytree Cofounder Advisor",
     version="0.1.0",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware — controls which domains can call this API.
-# Without this, the browser blocks requests from different origins.
+# In production, only allow the real Cherrytree domains.
+# In dev, also allow localhost so the React dev server can connect.
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+if ENVIRONMENT == "production":
+    allowed_origins = [
+        "https://cherrytree.app",
+        "https://my.cherrytree.app",
+    ]
+else:
+    allowed_origins = [
+        "http://localhost:3000",  # React dev server
+        "https://cherrytree-cofounder-agree-dev.web.app",  # Firebase dev
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # React dev server
-        "https://cherrytree.app",  # Production
-        "https://my.cherrytree.app",  # Production alt
-        "https://cherrytree-cofounder-agree-dev.web.app",  # Firebase dev
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
@@ -92,7 +110,8 @@ def health():
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@limiter.limit("20/minute;200/hour")  # Blocks burst attacks (20/min) and sustained hammering (200/hour)
+async def chat(http_request: Request, request: ChatRequest):
     """
     Main chat endpoint. Flow:
     1. Receives the user's message + conversation history + survey context
@@ -112,7 +131,8 @@ async def chat(request: ChatRequest):
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[ERROR] /chat: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred processing your request.")
 
 
 @app.get("/chats/{user_id}")
@@ -148,7 +168,8 @@ def submit_feedback(request: FeedbackRequest):
         )
         return {"status": "ok"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[ERROR] /feedback: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred submitting feedback.")
 
 
 @app.delete("/chats/{chat_id}")
