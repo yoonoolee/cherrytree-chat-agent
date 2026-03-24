@@ -8,7 +8,7 @@ Commit and push changes directly to master.
 
 2. Run `git diff HEAD` to understand the changes. Read the full diff — base the commit message on what actually changed, not just on what was worked on in the current session.
 
-3. Draft a concise commit message (imperative mood, under 72 chars, "why" not "what"). Show it to the user and wait for approval before continuing.
+3. Draft a concise commit message (imperative mood, under 72 chars, "why" not "what"). Show it to the user and explicitly ask for approval. **Do not proceed until the user confirms.** Never auto-commit.
 
 4. Stage and commit with the approved message. Never include Claude attribution, co-author lines, or generated-with footers:
    ```
