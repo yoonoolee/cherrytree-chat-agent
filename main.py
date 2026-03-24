@@ -10,11 +10,12 @@ Local:  uvicorn main:app --reload --port 8000
 Prod:   Deployed on Google Cloud Run
 """
 
+import json
 import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pathlib import Path
@@ -28,7 +29,7 @@ from slowapi.errors import RateLimitExceeded
 load_dotenv(override=True)
 
 # Import the agent runner and chat store (must come after load_dotenv so the API key is available)
-from agent.graph import run_agent
+from agent.graph import run_agent, stream_agent
 from agent.chat_store import load_user_chats, load_chat, delete_chat
 
 # Resolve the project root directory for serving static files
@@ -80,7 +81,6 @@ class ChatRequest(BaseModel):
     chat_id: str = ""                   # Which chat (empty = start a new chat)
     conversation_history: list = []     # All previous messages (for multi-turn context)
     current_section: str = ""           # Which survey section the user is on
-    completion_percent: int = 0         # How far along the survey is (0-100)
 
 
 class ChatResponse(BaseModel):
@@ -127,12 +127,40 @@ async def chat(http_request: Request, request: ChatRequest):
             chat_id=request.chat_id or None,
             conversation_history=request.conversation_history,
             current_section=request.current_section,
-            completion_percent=request.completion_percent,
         )
         return result
     except Exception as e:
         print(f"[ERROR] /chat: {e}")
         raise HTTPException(status_code=500, detail="An error occurred processing your request.")
+
+
+@app.post("/chat/stream")
+@limiter.limit("20/minute;200/hour")
+async def chat_stream(request: Request, body: ChatRequest):
+    """
+    Streaming chat endpoint. Returns SSE (text/event-stream).
+
+    Events:
+      data: {"type": "token", "content": "..."}   — one per streamed text token
+      data: {"type": "done",  "chat_id": "...", "run_id": "...", "conversation_history": [...]}
+      data: {"type": "error", "message": "..."}   — on failure
+    """
+    async def event_generator():
+        try:
+            async for chunk in stream_agent(
+                message=body.message,
+                user_id=body.user_id,
+                project_id=body.project_id,
+                chat_id=body.chat_id or None,
+                conversation_history=body.conversation_history,
+                current_section=body.current_section,
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as e:
+            print(f"[ERROR] /chat/stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred processing your request.'})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/chats/{user_id}")

@@ -102,3 +102,15 @@ def delete_chat(chat_id: str):
         return
 
     db.collection("chats").document(chat_id).delete()
+
+
+def load_project(project_id: str) -> dict:
+    """Load a project document from Firestore. Returns the full dict, or {} if not found."""
+    if not db:
+        return {}
+
+    doc = db.collection("projects").document(project_id).get()
+    if not doc.exists:
+        return {}
+
+    return doc.to_dict()

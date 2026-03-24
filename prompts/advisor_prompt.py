@@ -4,55 +4,187 @@ System prompt builder for the Cofounder Advisor agent.
 The system prompt tells Claude WHO it is, WHAT it can do, and HOW to behave.
 It's sent with every API call as the first message.
 
-Dynamic context (current section, completion %, agreement details) is injected
-via f-string so Claude knows the user's situation.
+Dynamic context (current section, survey data) is injected via f-string so
+Claude knows the user's situation.
 
 Uses XML tags for clear section delineation —
 Claude is specifically trained to follow XML-structured prompts well.
 """
 
 
+def _merge_other(value, other_value):
+    """
+    Merge an 'Other' free-text value into a field's answer.
+    - If value is a list, replace the 'Other' entry with the other_value text.
+    - If value is a string 'Other', replace it with other_value.
+    """
+    if not other_value:
+        return value
+    if isinstance(value, list):
+        return [other_value if v == "Other" else v for v in value]
+    if value == "Other":
+        return other_value
+    return value
+
+
+def _format_survey(survey: dict) -> str:
+    """
+    Format surveyData from Firestore into a clean key-value list for the system prompt.
+
+    - Always shows all meaningful fields; marks unfilled ones as "Not filled"
+    - Skips acknowledgement fields, mailing address, and internal calculator state
+    - Merges *Other free-text fields into their parent field
+    - Formats nested arrays (cofounders, equityEntries, compensations) readably
+    """
+    # All meaningful fields in display order, with human-readable labels
+    FIELDS = [
+        ("companyName",             "Company name"),
+        ("companyDescription",      "Company description"),
+        ("entityType",              "Legal structure"),
+        ("registeredState",         "Registered state"),
+        ("industries",              "Industries"),
+        ("cofounderCount",          "Number of cofounders"),
+        ("cofounders",              "Cofounders"),
+        ("equityEntries",           "Equity allocation"),
+        ("vestingStartDate",        "Vesting start date"),
+        ("vestingSchedule",         "Vesting schedule"),
+        ("cliffPercentage",         "Cliff percentage"),
+        ("accelerationTrigger",     "Acceleration on termination without cause"),
+        ("accelerationProtectionMonths", "Acceleration protection period"),
+        ("sharesSellNoticeDays",    "Notice days required to sell shares"),
+        ("sharesBuybackDays",       "Company buyback window after resignation (days)"),
+        ("vestedSharesDisposal",    "Vested shares disposal on death/incapacitation"),
+        ("majorDecisions",          "Decisions requiring all cofounders"),
+        ("equityVotingPower",       "Equity reflects voting power"),
+        ("tieResolution",           "Tie resolution method"),
+        ("includeShotgunClause",    "Includes shotgun clause"),
+        ("hasPreExistingIP",        "Pre-existing IP"),
+        ("takingCompensation",      "Cofounders taking compensation"),
+        ("compensations",           "Compensation details"),
+        ("spendingLimit",           "Spending limit before approval needed ($)"),
+        ("performanceConsequences", "Consequences for unmet obligations"),
+        ("remedyPeriodDays",        "Remedy period after written notice (days)"),
+        ("terminationWithCause",    "Termination with cause conditions"),
+        ("voluntaryNoticeDays",     "Voluntary departure notice period (days)"),
+        ("nonCompeteDuration",      "Non-compete duration after departure"),
+        ("nonSolicitDuration",      "Non-solicitation duration after departure"),
+        ("disputeResolution",       "Dispute resolution method"),
+        ("governingLaw",            "Governing law (state)"),
+        ("amendmentProcess",        "Agreement amendment process"),
+        ("reviewFrequencyMonths",   "Agreement review frequency (months)"),
+    ]
+
+    # Resolve all *Other merges upfront
+    resolved = dict(survey)
+    other_pairs = [
+        ("entityType",          "entityTypeOther"),
+        ("industries",          "industryOther"),
+        ("vestingSchedule",     "vestingScheduleOther"),
+        ("majorDecisions",      "majorDecisionsOther"),
+        ("terminationWithCause","terminationWithCauseOther"),
+        ("nonCompeteDuration",  "nonCompeteDurationOther"),
+        ("nonSolicitDuration",  "nonSolicitDurationOther"),
+        ("disputeResolution",   "disputeResolutionOther"),
+        ("amendmentProcess",    "amendmentProcessOther"),
+    ]
+    for parent_key, other_key in other_pairs:
+        if parent_key in resolved and other_key in resolved:
+            resolved[parent_key] = _merge_other(resolved[parent_key], resolved.get(other_key, ""))
+
+    NULL = "Not filled yet"
+    lines = []
+
+    for key, label in FIELDS:
+        value = resolved.get(key)
+        empty = value in [None, "", [], {}, False]
+
+        # --- Nested: cofounders ---
+        if key == "cofounders":
+            if empty or not isinstance(value, list):
+                lines.append(f"- {label}: {NULL}")
+            else:
+                lines.append(f"- {label}:")
+                for i, cf in enumerate(value, 1):
+                    roles = cf.get("roles", [])
+                    if cf.get("rolesOther"):
+                        roles = [cf["rolesOther"] if r == "Other" else r for r in roles]
+                    lines.append(f"    {i}. {cf.get('fullName', '?')} — {cf.get('title', '?')}")
+                    lines.append(f"       Roles: {', '.join(roles) if roles else NULL}")
+                    lines.append(f"       Email: {cf.get('email', '?')}")
+            continue
+
+        # --- Nested: equityEntries ---
+        if key == "equityEntries":
+            if empty or not isinstance(value, list):
+                lines.append(f"- {label}: {NULL}")
+            else:
+                lines.append(f"- {label}:")
+                for entry in value:
+                    lines.append(f"    {entry.get('name', '?')}: {entry.get('percentage', '?')}%")
+            continue
+
+        # --- Nested: compensations ---
+        if key == "compensations":
+            if empty or not isinstance(value, list):
+                lines.append(f"- {label}: {NULL}")
+            else:
+                lines.append(f"- {label}:")
+                for entry in value:
+                    lines.append(f"    {entry.get('who', '?')}: ${entry.get('amount', '?')}")
+            continue
+
+        # --- Lists (multi-select) ---
+        if not empty and isinstance(value, list):
+            lines.append(f"- {label}: {', '.join(str(v) for v in value)}")
+            continue
+
+        lines.append(f"- {label}: {NULL if empty else value}")
+
+    return "\n".join(lines)
+
+
 def build_system_prompt(
     current_section: str = "",
-    completion_percent: int = 0,
     agreement_details: dict = None,
+    survey_context: dict = None,
+    rag_topics: list = None,
 ) -> str:
     """
     Build the system prompt with dynamic context.
 
     Args:
         current_section: Which survey section the user is currently on
-        completion_percent: How far along the survey is (0-100)
-        agreement_details: Dict of agreement fields from Firestore form data
+        agreement_details: Dict of agreement fields from Firestore form data (legacy, unused)
+        survey_context: Full surveyData dict from the project's Firestore document
+        rag_topics: List of topic categories available in the RAG knowledge base
 
     Returns:
         The full system prompt string to send to Claude
     """
 
     details = agreement_details or {}
+    survey = survey_context or {}
+    topics = rag_topics or []
+
+    survey_summary = _format_survey(survey)
+    rag_topics_str = "\n".join(f"- {t}" for t in topics) if topics else "- (no topics loaded)"
 
     return f"""<role>
 You are a cofounder advisor built into Cherrytree, a tool that helps startup founders create and understand their cofounder agreements. You help users think through how specific situations affect their cofoundership.
 </role>
 
 <agreement_context>
-You have access to this user's agreement details:
-- Equity split: {details.get("equity_split", "Not specified")}
-- Vesting schedule: {details.get("vesting_schedule", "Not specified")}
-- Cliff: {details.get("cliff", "Not specified")}
-- Acceleration: {details.get("acceleration", "Not specified")}
-- Roles: {details.get("roles", "Not specified")}
-- Full-time/part-time status: {details.get("commitment_status", "Not specified")}
-- Departure terms: {details.get("departure_terms", "Not specified")}
-- Decision-making authority: {details.get("decision_making", "Not specified")}
-- IP assignment: {details.get("ip_assignment", "Not specified")}
+Here is what the user has filled out in their cofounder agreement survey so far:
 
-Some fields may be empty or unspecified. When a relevant field is missing, flag it directly. Gaps in agreements are often where problems emerge. Don't assume defaults or fill in blanks. Tell the user what's undefined and why it matters for their question.
+{survey_summary}
+
+Some fields may be empty or not yet filled in yet. Don't assume defaults or fill in blanks. 
+
+Only reference this data when it's directly relevant to the user's question. If they ask something general ("what is vesting?"), answer it generally — don't force their specific details into every response.
 </agreement_context>
 
 <current_context>
 Current survey section: {current_section or "Not specified"}
-Survey completion: {completion_percent}%
 </current_context>
 
 <core_approach>
@@ -156,9 +288,10 @@ When citing statistics or benchmarks:
 </data_integrity>
 
 <tools>
-- Use the rag_search tool when the user asks about specific cofounder scenarios, legal concepts, equity frameworks, or when you need grounded information beyond your general knowledge. Prefer searching over guessing when the question involves specific benchmarks, frameworks, or best practices
-- Use the read_form_data tool when you need to reference what the user has already filled out beyond what's in the agreement context above, or when the agreement context fields show "Not specified" but the user's question depends on that information
-- When the user asks a simple, general question that you can confidently answer from common knowledge, you do not need to call any tools
+The knowledge base contains articles on these topics:
+{rag_topics_str}
+
+Search when the user's question relates to any of these topics. Write a specific, descriptive query rather than repeating the user's question verbatim.
 </tools>
 
 <conversation_rules>

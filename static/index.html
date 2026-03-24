@@ -318,10 +318,6 @@
       </select>
     </div>
     <div>
-      <label>Completion:</label>
-      <input type="number" id="completion" value="30" min="0" max="100" style="width:60px">%
-    </div>
-    <div>
       <label>User ID:</label>
       <input type="text" id="userId" value="test-user-1" style="width:100px">
     </div>
@@ -405,14 +401,19 @@
       sendBtn.disabled = true;
       addMessage('user', message);
 
-      const typingEl = document.createElement('div');
-      typingEl.className = 'typing';
-      typingEl.textContent = 'Thinking';
-      chatEl.appendChild(typingEl);
+      // Create the assistant bubble immediately — text streams into it
+      const assistantDiv = document.createElement('div');
+      assistantDiv.className = 'message assistant';
+      const textSpan = document.createElement('span');
+      assistantDiv.appendChild(textSpan);
+      chatEl.appendChild(assistantDiv);
       chatEl.scrollTop = chatEl.scrollHeight;
 
+      let fullResponse = '';
+      let finalRunId = null;
+
       try {
-        const res = await fetch('http://localhost:8000/chat', {
+        const res = await fetch('http://localhost:8000/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -422,27 +423,67 @@
             chat_id: currentChatId || '',
             conversation_history: conversationHistory,
             current_section: document.getElementById('section').value,
-            completion_percent: parseInt(document.getElementById('completion').value) || 0,
           }),
         });
 
-        const data = await res.json();
-        typingEl.remove();
-
-        if (res.ok) {
-          conversationHistory = data.conversation_history;
-          // If this was a new chat, save the returned chat ID
-          if (!currentChatId && data.chat_id) {
-            currentChatId = data.chat_id;
-            loadChatList();
-          }
-          addMessage('assistant', data.response, data.run_id);
-        } else {
-          addMessage('assistant', `Error: ${data.detail || 'Something went wrong'}`);
+        if (!res.ok) {
+          const data = await res.json();
+          assistantDiv.innerHTML = formatMarkdown(`Error: ${data.detail || 'Something went wrong'}`);
+          sendBtn.disabled = false;
+          inputEl.focus();
+          return;
         }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep any incomplete line for next chunk
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let payload;
+            try { payload = JSON.parse(line.slice(6)); } catch { continue; }
+
+            if (payload.type === 'token') {
+              fullResponse += payload.content;
+              textSpan.textContent = fullResponse; // raw text while streaming
+              chatEl.scrollTop = chatEl.scrollHeight;
+            } else if (payload.type === 'done') {
+              conversationHistory = payload.conversation_history;
+              finalRunId = payload.run_id;
+              if (!currentChatId && payload.chat_id) {
+                currentChatId = payload.chat_id;
+                loadChatList();
+              }
+            } else if (payload.type === 'error') {
+              fullResponse = `Error: ${payload.message}`;
+              assistantDiv.style.color = '#e74c6f';
+            }
+          }
+        }
+
+        // Apply markdown formatting and add feedback bar once stream is complete
+        assistantDiv.innerHTML = formatMarkdown(fullResponse);
+        if (finalRunId) {
+          const feedbackBar = document.createElement('div');
+          feedbackBar.className = 'feedback-bar';
+          feedbackBar.innerHTML = `
+            <button class="feedback-btn" onclick="sendFeedback('${finalRunId}', 1, this)">&#x1F44D;</button>
+            <button class="feedback-btn" onclick="sendFeedback('${finalRunId}', 0, this)">&#x1F44E;</button>
+          `;
+          assistantDiv.appendChild(feedbackBar);
+        }
+
       } catch (err) {
-        typingEl.remove();
-        addMessage('assistant', `Connection error: Is the server running on localhost:8000?`);
+        assistantDiv.textContent = 'Connection error: Is the server running on localhost:8000?';
+        assistantDiv.style.color = '#e74c6f';
       }
 
       sendBtn.disabled = false;
