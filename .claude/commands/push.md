@@ -1,18 +1,10 @@
 # /push
 
-Commit, sync with master, push, and open a PR to master for prod deployment.
-The chat agent runs on Cloud Run — after the PR merges, a manual deploy is required (no CI/CD yet).
-
-## Branch setup (one-time, per developer)
-Each developer has one persistent personal branch named after them (e.g. `avery`, `tim`).
-- Never commit to `master` directly
-- Never use the `dev` branch — it is obsolete
-- Never create new branches — each developer uses their one persistent branch indefinitely
-- PRs always target `master`
+Commit and push changes directly to master.
 
 ## Steps
 
-1. Run `git pull` to sync your branch with remote. If there are merge conflicts, stop and tell the user to resolve them first. If nothing to commit and nothing to push, tell the user and stop.
+1. Run `git pull origin master` to sync with remote. If there are merge conflicts, stop and tell the user to resolve them first. If nothing to commit and nothing to push, tell the user and stop.
 
 2. Run `git diff HEAD` to understand the changes. Read the full diff — base the commit message on what actually changed, not just on what was worked on in the current session.
 
@@ -23,33 +15,7 @@ Each developer has one persistent personal branch named after them (e.g. `avery`
    git add -A && git commit -m "<approved message>"
    ```
 
-5. Sync with latest master so the PR is never "behind":
+5. Push to master:
    ```
-   git fetch origin && git merge origin/master
-   ```
-   If this causes conflicts, stop and tell the user to resolve them.
-
-6. Push to the current branch:
-   ```
-   git push
-   ```
-   If no upstream is set: `git push -u origin <branch>`. Never create a new branch or switch branches.
-
-7. Check for an open PR targeting `master` from this branch:
-   ```
-   gh pr list --head <branch> --base master --state open
-   ```
-   If one exists, open it. If not, create one:
-   ```
-   gh pr create --base master --fill
-   ```
-   Then open the URL.
-
-8. Poll `gh pr view --json state,mergedAt` every 15 seconds (up to 10 minutes). When merged, remind the user to deploy to Cloud Run:
-   ```
-   gcloud builds submit --tag gcr.io/PROJECT_ID/cherrytree-chat-agent
-   gcloud run deploy cherrytree-chat-agent \
-     --image gcr.io/PROJECT_ID/cherrytree-chat-agent \
-     --region us-west2 \
-     --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest
+   git push origin master
    ```

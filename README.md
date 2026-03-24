@@ -50,4 +50,4 @@ Open `http://localhost:8000` for the test UI or send requests to `POST /chat`.
 | `agent/tools.py` | Add new tools the agent can call |
 | `agent/graph.py` | Adjust model, temperature, token limits |
 
-See `CHATBOT.md` for full architecture details, evaluation pipeline, and production deployment guide.
+See `CLAUDE.md` for full architecture details and evaluation pipeline.
