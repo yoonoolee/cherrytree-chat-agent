@@ -23,7 +23,7 @@ class AgentState(TypedDict):
     # knows which project it's advising on and where the user is in the survey.
     project_id: str
     current_section: str
-    completion_percent: int
+    survey_context: dict
 
     # The final text response from the agent — extracted at the end
     # and sent back to the frontend.

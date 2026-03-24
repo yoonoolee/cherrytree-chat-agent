@@ -20,7 +20,9 @@ This is a ReAct (Reason + Act) pattern — the agent reasons about what to do,
 takes an action (tool call), observes the result, then reasons again.
 """
 
+import json
 import uuid
+from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, START, END
@@ -28,8 +30,26 @@ from langgraph.prebuilt import ToolNode
 
 from agent.state import AgentState
 from agent.tools import all_tools
-from agent.chat_store import create_chat, load_chat, save_chat
+from agent.chat_store import create_chat, load_chat, save_chat, load_project
 from prompts.advisor_prompt import build_system_prompt
+
+# Load unique RAG topics once at startup from the knowledge base file.
+# Passed into the system prompt so Claude knows what's searchable.
+_KB_PATH = Path(__file__).resolve().parent.parent / "knowledge" / "documents" / "knowledge_base.jsonl"
+
+def _load_rag_topics() -> list[str]:
+    if not _KB_PATH.exists():
+        return []
+    topics = set()
+    with open(_KB_PATH) as f:
+        for line in f:
+            try:
+                topics.add(json.loads(line)["topic"])
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return sorted(topics)
+
+RAG_TOPICS = _load_rag_topics()
 
 # Initialize Claude Sonnet 4.5 with tool-calling enabled.
 # bind_tools() tells Claude about the available tools so it can decide to call them.
@@ -55,7 +75,8 @@ async def advisor_node(state: AgentState) -> dict:
     # Build system prompt with the user's current survey context
     system_prompt = build_system_prompt(
         current_section=state.get("current_section", ""),
-        completion_percent=state.get("completion_percent", 0),
+        survey_context=state.get("survey_context", {}),
+        rag_topics=RAG_TOPICS,
     )
 
     # Prepend system prompt to the conversation messages
@@ -109,6 +130,82 @@ graph_builder.add_edge("tools", "advisor")
 graph = graph_builder.compile()
 
 
+async def stream_agent(
+    message: str,
+    user_id: str,
+    project_id: str,
+    chat_id: str = None,
+    conversation_history: list = None,
+    current_section: str = "",
+):
+    """
+    Streaming entry point called by main.py's /chat/stream endpoint.
+
+    Yields dicts:
+      {"type": "token", "content": "..."}  — one per streamed text token
+      {"type": "done",  "chat_id": "...", "run_id": "...", "conversation_history": [...]}
+
+    Only streams tokens from the advisor node (not tool calls or tool results).
+    Chat history is saved to Firestore at the end, same as run_agent.
+    """
+    if not chat_id:
+        chat_id = create_chat(user_id, project_id)
+
+    if not conversation_history:
+        chat_doc = load_chat(chat_id)
+        conversation_history = chat_doc.get("messages", []) if chat_doc else []
+
+    # Fetch latest project data from Firestore on every message so the agent
+    # always has the current survey state (user fills out survey between messages)
+    project_doc = load_project(project_id)
+    survey_context = project_doc.get("surveyData", {})
+
+    messages = []
+    for msg in (conversation_history or []):
+        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": message})
+
+    run_id = str(uuid.uuid4())
+    full_response = ""
+
+    async for event in graph.astream_events(
+        {
+            "messages": messages,
+            "project_id": project_id,
+            "current_section": current_section,
+            "survey_context": survey_context,
+            "response": "",
+        },
+        config={"run_id": run_id},
+        version="v2",
+    ):
+        # Only yield text tokens from the advisor node — skip tool call/result nodes
+        if (
+            event["event"] == "on_chat_model_stream"
+            and event.get("metadata", {}).get("langgraph_node") == "advisor"
+        ):
+            chunk = event["data"]["chunk"]
+            # Anthropic returns content as a list of blocks: [{"type": "text", "text": "..."}]
+            if isinstance(chunk.content, list):
+                for block in chunk.content:
+                    text = block.get("text", "") if isinstance(block, dict) else ""
+                    if text:
+                        full_response += text
+                        yield {"type": "token", "content": text}
+
+    updated_history = list(conversation_history or [])
+    updated_history.append({"role": "user", "content": message})
+    updated_history.append({"role": "assistant", "content": full_response})
+    save_chat(chat_id, updated_history)
+
+    yield {
+        "type": "done",
+        "chat_id": chat_id,
+        "run_id": run_id,
+        "conversation_history": updated_history,
+    }
+
+
 async def run_agent(
     message: str,
     user_id: str,
@@ -116,7 +213,6 @@ async def run_agent(
     chat_id: str = None,
     conversation_history: list = None,
     current_section: str = "",
-    completion_percent: int = 0,
 ) -> dict:
     """
     Entry point called by main.py's /chat endpoint.
@@ -138,6 +234,11 @@ async def run_agent(
         chat_doc = load_chat(chat_id)
         conversation_history = chat_doc.get("messages", []) if chat_doc else []
 
+    # Fetch latest project data from Firestore on every message so the agent
+    # always has the current survey state (user fills out survey between messages)
+    project_doc = load_project(project_id)
+    survey_context = project_doc.get("surveyData", {})
+
     # Rebuild messages from conversation history
     messages = []
     for msg in (conversation_history or []):
@@ -156,7 +257,7 @@ async def run_agent(
             "messages": messages,
             "project_id": project_id,
             "current_section": current_section,
-            "completion_percent": completion_percent,
+            "survey_context": survey_context,
             "response": "",
         },
         config={"run_id": run_id},

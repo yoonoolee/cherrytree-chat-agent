@@ -1,23 +1,51 @@
-Stage all changes, commit, push, and open a PR targeting `master` for prod deployment. The chat agent runs on Cloud Run — after the PR merges to `master`, a manual deploy is required (no CI/CD yet).
+# /push
 
-Do the following steps in order:
+Commit, sync with master, push, and open a PR to master for prod deployment.
+The chat agent runs on Cloud Run — after the PR merges, a manual deploy is required (no CI/CD yet).
 
-1. Run `git pull` first to make sure we're on the latest code. If there are merge conflicts, stop and tell the user to resolve them before continuing. Then run `git status` to see what's changed. If there is nothing to commit, tell the user and stop.
+## Branch setup (one-time, per developer)
+Each developer has one persistent personal branch named after them (e.g. `avery`, `tim`).
+- Never commit to `master` directly
+- Never use the `dev` branch — it is obsolete
+- Never create new branches — each developer uses their one persistent branch indefinitely
+- PRs always target `master`
 
-2. Run `git diff HEAD` to understand the full set of changes.
+## Steps
 
-3. Based on the diff, draft a concise commit message (imperative mood, under 72 chars, focused on "why" not "what"). Show it to the user and ask them to approve or edit it. Wait for their response before continuing.
+1. Run `git pull` to sync your branch with remote. If there are merge conflicts, stop and tell the user to resolve them first. If nothing to commit and nothing to push, tell the user and stop.
 
-4. Once the user approves the message (or provides their own), stage all changes with `git add -A` and commit with the approved message. Never include any Claude Code attribution, co-author lines, or "Generated with Claude Code" footers in the commit message:
+2. Run `git diff HEAD` to understand the changes. Read the full diff — base the commit message on what actually changed, not just on what was worked on in the current session.
+
+3. Draft a concise commit message (imperative mood, under 72 chars, "why" not "what"). Show it to the user and wait for approval before continuing.
+
+4. Stage and commit with the approved message. Never include Claude attribution, co-author lines, or generated-with footers:
    ```
-   git commit -m "<approved message>"
+   git add -A && git commit -m "<approved message>"
    ```
 
-5. Push to the current branch: `git push`. If no upstream is set, use `git push -u origin <branch>`. Never create a new branch — always push to whatever branch we're already on.
+5. Sync with latest master so the PR is never "behind":
+   ```
+   git fetch origin && git merge origin/master
+   ```
+   If this causes conflicts, stop and tell the user to resolve them.
 
-6. After pushing, check if an open PR targeting `master` exists for the current branch using `gh pr list --head <branch> --base master --state open --json url`. If one exists, open it. If not, create one with `gh pr create --base master --fill` and open the new URL. Always fetch fresh — never reuse a URL from earlier in the conversation.
+6. Push to the current branch:
+   ```
+   git push
+   ```
+   If no upstream is set: `git push -u origin <branch>`. Never create a new branch or switch branches.
 
-7. After opening the PR, poll for merge status by running `gh pr view --json state,mergedAt` every 15 seconds (up to 10 minutes). As soon as the PR is merged, remind the user to deploy to Cloud Run:
+7. Check for an open PR targeting `master` from this branch:
+   ```
+   gh pr list --head <branch> --base master --state open
+   ```
+   If one exists, open it. If not, create one:
+   ```
+   gh pr create --base master --fill
+   ```
+   Then open the URL.
+
+8. Poll `gh pr view --json state,mergedAt` every 15 seconds (up to 10 minutes). When merged, remind the user to deploy to Cloud Run:
    ```
    gcloud builds submit --tag gcr.io/PROJECT_ID/cherrytree-chat-agent
    gcloud run deploy cherrytree-chat-agent \

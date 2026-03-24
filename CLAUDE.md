@@ -39,6 +39,17 @@ uvicorn main:app --reload
 # → http://localhost:8000 (test UI) or POST /chat
 ```
 
+## Agent Use Cases
+
+The agent is a full cofounder agreement advisor — not scoped to just the section the user is currently on. Users can:
+
+- **Ask educational questions** — "what is a cliff?", "how does a shotgun clause work?", "what's the difference between single and double-trigger acceleration?"
+- **Get advice on what to fill in** — based on their specific situation (roles, commitment level, relationship history), the agent can help them think through what answers make sense for them
+- **Discuss their specific situation** — users describe their cofounder setup and get tailored input on what it means for their agreement
+- **Get suggestions on what to discuss with their cofounder** — the agent can surface conversations worth having, either in general or based on gaps/tensions in the form data they've entered
+- **Discover things to add beyond the survey** — the agent can flag additional clauses, considerations, or protections that aren't in the standard form but may matter for their situation
+- **Ask about any part of the agreement at any time** — they're not limited to their current survey section; the agent advises across Formation, Equity, Vesting, Decision-Making, IP, Compensation, Performance, Non-Compete, and General Provisions
+
 ## Agent Tools
 
 1. **`rag_search`** — semantic search over Pinecone knowledge base
@@ -49,9 +60,8 @@ Planned (not yet built): `suggest_form_value`, `calculate_equity`, `lookup_state
 
 ## Known Issues
 
-- **RAG tool underuse:** Agent doesn't call `rag_search` frequently enough. Fix focus: tweak system prompt instructions or tool descriptions to encourage more retrieval.
 - **Small knowledge base:** Only 21 articles ingested. More pending after validating summaries vs. raw text format.
-- **Citation grounding eval:** Can't run meaningfully until RAG usage is fixed.
+- **Citation grounding eval:** Pending more knowledge base content.
 
 ## Adding a Tool
 
@@ -96,7 +106,6 @@ See `TODO.md` for the full pre-launch checklist including Cloud Run deployment s
 ## Roadmap
 
 **Phase 1 — Make the agent useful (current focus)**
-- Fix RAG tool underuse (P0)
 - Expand knowledge base to 50-100 articles (P0)
 - Implement `suggest_form_value` and `calculate_equity` tools (P0)
 - Add abuse/mental health boundary guardrails to system prompt (P1)
