@@ -184,12 +184,3 @@ Two people actively pushing to this repo. When working with Claude:
 - **`.claude/settings.json` is committed** — changes to Claude permissions/commands apply to both teammates. Don't add personal preferences here; use `settings.local.json` (gitignored) for those.
 - **`.claude/commands/` is committed** — shared slash commands available to both teammates.
 
-## Deploy to Cloud Run
-
-```bash
-gcloud builds submit --tag gcr.io/PROJECT_ID/cherrytree-chat-agent
-gcloud run deploy cherrytree-chat-agent \
-  --image gcr.io/PROJECT_ID/cherrytree-chat-agent \
-  --region us-west2 \
-  --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest
-```
