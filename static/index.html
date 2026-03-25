@@ -3,85 +3,203 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cherrytree Advisor — Test</title>
+  <title>Cherrytree Advisor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f5f5f5;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #F3F4F6;
       height: 100vh;
       display: flex;
       flex-direction: column;
+      color: #374151;
+      font-size: 14px;
     }
 
-    header {
-      background: #1a1a2e;
-      color: #fff;
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    header h1 {
-      font-size: 18px;
+.dev-badge {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
       font-weight: 600;
+      color: #6B7280;
+      background: #F3F4F6;
+      padding: 6px 18px;
+      border-radius: 999px;
+      border: 1px solid #e5e7eb;
+      letter-spacing: 0.08em;
+      pointer-events: none;
     }
 
-    header span {
-      font-size: 12px;
-      background: #e74c6f;
-      padding: 2px 8px;
-      border-radius: 10px;
-    }
-
+    /* ── Context bar ── */
     .context-bar {
+      position: relative;
       background: #fff;
-      border-bottom: 1px solid #e0e0e0;
-      padding: 10px 24px;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 12px 24px;
       display: flex;
-      gap: 16px;
+      gap: 24px;
       align-items: center;
-      font-size: 13px;
-      color: #666;
       flex-wrap: wrap;
+      flex-shrink: 0;
     }
 
-    .context-bar label {
-      font-weight: 600;
-      color: #333;
-      margin-right: 4px;
+    .context-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
-    .context-bar select, .context-bar input {
-      padding: 4px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+    .context-field label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #6B7280;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .context-field select,
+    .context-field input {
+      font-family: inherit;
       font-size: 13px;
+      color: #374151;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid #d1d5db;
+      padding: 4px 0;
+      outline: none;
+      transition: border-color 0.15s;
+      min-width: 80px;
+    }
+
+    .context-field select {
+      min-width: 200px;
+      cursor: pointer;
+    }
+
+    .context-field select:focus,
+    .context-field input:focus {
+      border-bottom-color: #000;
     }
 
     .chat-actions {
       margin-left: auto;
       display: flex;
       gap: 6px;
+      align-items: center;
     }
 
+    .action-btn {
+      padding: 5px 12px;
+      background: none;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      color: #6B7280;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .action-btn:hover {
+      border-color: #374151;
+      color: #374151;
+    }
+
+    .action-btn.delete:hover {
+      border-color: #DC2626;
+      color: #DC2626;
+    }
+
+    /* ── Chat tabs ── */
+    .chat-list {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+      align-items: stretch;
+      overflow-x: auto;
+      flex-shrink: 0;
+      min-height: 36px;
+    }
+
+    .chat-list:empty {
+      display: none;
+    }
+
+    .chat-tab {
+      padding: 8px 14px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      color: #9CA3AF;
+      background: none;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+
+    .chat-tab:hover { color: #374151; }
+
+    .chat-tab.active {
+      color: #06271D;
+      border-bottom-color: #06271D;
+      font-weight: 500;
+    }
+
+    /* ── Chat container ── */
     .chat-container {
       flex: 1;
       overflow-y: auto;
-      padding: 24px;
+      padding: 32px 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
+      gap: 20px;
+      scrollbar-width: thin;
+      scrollbar-color: #9CA3AF #F3F4F6;
     }
 
+    .chat-container::-webkit-scrollbar { width: 6px; }
+    .chat-container::-webkit-scrollbar-track { background: #F3F4F6; }
+    .chat-container::-webkit-scrollbar-thumb { background: #9CA3AF; border-radius: 6px; }
+    .chat-container::-webkit-scrollbar-thumb:hover { background: #6B7280; }
+
+    /* ── Welcome state ── */
+    .welcome {
+      margin: auto;
+      text-align: center;
+      max-width: 380px;
+      padding: 48px 24px;
+    }
+
+    .welcome h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+
+    .welcome p {
+      font-size: 13px;
+      color: #6B7280;
+      line-height: 1.6;
+    }
+
+    /* ── Messages ── */
     .message {
       width: 100%;
-      max-width: 800px;
+      max-width: 720px;
       line-height: 1.6;
-      font-size: 14px;
     }
 
     .message.user {
@@ -90,219 +208,185 @@
     }
 
     .user-bubble {
-      background: #1a1a2e;
-      color: #fff;
-      padding: 12px 16px;
+      background: #E5E7EB;
+      color: #374151;
+      padding: 10px 16px;
       border-radius: 16px 16px 4px 16px;
-      max-width: 70%;
-      text-align: left;
+      max-width: 65%;
+      font-size: 14px;
     }
 
-    .message.assistant {
-      background: transparent;
-      padding: 4px 0;
-    }
+    .message.assistant { color: #374151; }
 
-    .message.assistant h2 {
-      font-size: 15px;
-      margin: 12px 0 6px 0;
+    /* Markdown prose */
+    .message.assistant p { margin: 0 0 10px; }
+    .message.assistant p:last-child { margin-bottom: 0; }
+    .message.assistant h2 { font-size: 14px; font-weight: 600; color: #111827; margin: 14px 0 6px; }
+    .message.assistant h3 { font-size: 13px; font-weight: 600; color: #111827; margin: 12px 0 4px; }
+    .message.assistant ul, .message.assistant ol { padding-left: 18px; margin: 6px 0 10px; }
+    .message.assistant li { margin: 3px 0; }
+    .message.assistant strong { font-weight: 600; color: #111827; }
+    .message.assistant em { color: #6B7280; }
+    .message.assistant code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      background: #F3F4F6;
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: #374151;
     }
-
-    .message.assistant ul, .message.assistant ol {
-      padding-left: 20px;
-      margin: 6px 0;
+    .message.assistant pre {
+      background: #F3F4F6;
+      border-radius: 6px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 8px 0;
     }
-
-    .message.assistant li {
-      margin: 4px 0;
-    }
-
-    .message.assistant strong {
-      color: #1a1a2e;
-    }
-
-    .message.assistant em {
-      color: #888;
-      font-size: 13px;
-    }
-
-    .message.assistant p {
+    .message.assistant pre code { background: none; padding: 0; }
+    .message.assistant blockquote {
+      border-left: 3px solid #e5e7eb;
+      padding-left: 12px;
+      color: #6B7280;
       margin: 8px 0;
     }
 
-    .typing {
-      width: 100%;
-      max-width: 800px;
-      color: #999;
-      font-size: 14px;
-      padding: 12px 20px;
+    .streaming-text {
+      white-space: pre-wrap;
+      color: #374151;
     }
 
-    .typing::after {
-      content: '';
-      animation: dots 1.5s steps(4, end) infinite;
-    }
-
-    @keyframes dots {
-      0% { content: ''; }
-      25% { content: '.'; }
-      50% { content: '..'; }
-      75% { content: '...'; }
-    }
-
-    .input-bar {
-      background: #fff;
-      border-top: 1px solid #e0e0e0;
-      padding: 16px 24px;
-      display: flex;
-      gap: 12px;
-    }
-
-    .input-bar input {
-      flex: 1;
-      padding: 12px 16px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      font-size: 14px;
-      outline: none;
-    }
-
-    .input-bar input:focus {
-      border-color: #1a1a2e;
-    }
-
-    .input-bar button {
-      padding: 12px 24px;
-      background: #1a1a2e;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .input-bar button:hover {
-      background: #2a2a4e;
-    }
-
-    .input-bar button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-
-    .disclaimer {
-      text-align: center;
-      font-size: 11px;
-      color: #999;
-      padding: 8px;
-      background: #f5f5f5;
-      font-weight: 700;
-    }
-
-    .action-btn {
-      padding: 4px 12px;
-      background: none;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 12px;
-      cursor: pointer;
-      color: #999;
-    }
-
-    .action-btn:hover {
-      border-color: #1a1a2e;
-      color: #1a1a2e;
-    }
-
-    .action-btn.delete:hover {
-      border-color: #e74c6f;
-      color: #e74c6f;
-    }
-
-    .chat-list {
-      background: #fff;
-      border-bottom: 1px solid #e0e0e0;
-      padding: 8px 24px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      font-size: 13px;
-      overflow-x: auto;
-    }
-
-    .chat-tab {
-      padding: 4px 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 12px;
-      cursor: pointer;
-      color: #666;
-      background: none;
-      white-space: nowrap;
-    }
-
-    .chat-tab:hover {
-      border-color: #1a1a2e;
-      color: #1a1a2e;
-    }
-
-    .chat-tab.active {
-      background: #1a1a2e;
-      color: #fff;
-      border-color: #1a1a2e;
-    }
-
+    /* ── Feedback ── */
     .feedback-bar {
       display: flex;
       gap: 6px;
       margin-top: 10px;
       padding-top: 8px;
-      border-top: 1px solid #f0f0f0;
+      border-top: 1px solid #F3F4F6;
     }
 
     .feedback-btn {
       background: none;
-      border: 1px solid #ddd;
+      border: 1px solid #e5e7eb;
       border-radius: 4px;
-      padding: 3px 8px;
-      font-size: 13px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-family: inherit;
       cursor: pointer;
-      color: #999;
+      color: #9CA3AF;
+      transition: border-color 0.15s, color 0.15s;
     }
 
-    .feedback-btn:hover {
-      border-color: #1a1a2e;
-      color: #1a1a2e;
+    .feedback-btn:hover:not(:disabled) {
+      border-color: #374151;
+      color: #374151;
     }
 
-    .feedback-btn.selected-up {
-      border-color: #4caf50;
-      color: #4caf50;
-      cursor: default;
+    .feedback-btn.selected-up { border-color: #06271D; color: #06271D; cursor: default; }
+    .feedback-btn.selected-down { border-color: #DC2626; color: #DC2626; cursor: default; }
+    .feedback-btn:disabled { cursor: default; opacity: 0.5; }
+
+    /* ── Typing indicator ── */
+    .typing {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      padding: 4px 0;
     }
 
-    .feedback-btn.selected-down {
-      border-color: #e74c6f;
-      color: #e74c6f;
-      cursor: default;
+    .typing-dot {
+      width: 5px;
+      height: 5px;
+      background: #9CA3AF;
+      border-radius: 50%;
+      animation: bounce 1.2s ease-in-out infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40% { transform: translateY(-5px); opacity: 1; }
     }
 
-    .feedback-btn:disabled {
-      cursor: default;
-      opacity: 0.5;
+    /* ── Input bar ── */
+    .input-bar {
+      background: #F3F4F6;
+      padding: 16px 24px 20px;
+      display: flex;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .input-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 720px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      padding: 8px 8px 8px 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .input-pill:focus-within {
+      border-color: #9CA3AF;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.1);
+    }
+
+    .input-pill input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 14px;
+      color: #374151;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 4px 0;
+    }
+
+    .input-pill input::placeholder { color: #9CA3AF; }
+
+    .send-btn {
+      width: 34px;
+      height: 34px;
+      background: #000;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+
+    .send-btn:hover { background: #1a1a1a; }
+    .send-btn:disabled { background: #d1d5db; cursor: not-allowed; }
+
+    .send-btn svg { display: block; }
+
+    /* ── Disclaimer ── */
+    .disclaimer {
+      text-align: center;
+      font-size: 11px;
+      color: #9CA3AF;
+      padding: 7px 24px;
+      background: #F3F4F6;
+      border-top: none;
+      flex-shrink: 0;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Cherrytree Cofounder Advisor</h1>
-    <span>TEST</span>
-  </header>
-
   <div class="context-bar">
-    <div>
-      <label>Section:</label>
+    <div class="context-field">
+      <label>Section</label>
       <select id="section">
         <option value="">Not specified</option>
         <option value="formation">1. Formation & Purpose</option>
@@ -317,32 +401,45 @@
         <option value="general">10. General Provisions</option>
       </select>
     </div>
-    <div>
-      <label>User ID:</label>
-      <input type="text" id="userId" value="test-user-1" style="width:100px">
+    <div class="context-field">
+      <label>User ID</label>
+      <span id="userId" style="font-size:13px;color:#374151;padding:4px 0;border-bottom:2px solid transparent;">test-user-1</span>
     </div>
-    <div>
-      <label>Project ID:</label>
-      <input type="text" id="projectId" value="test-123" style="width:100px">
+    <div class="context-field">
+      <label>Project ID</label>
+      <span id="projectId" style="font-size:13px;color:#374151;padding:4px 0;border-bottom:2px solid transparent;">test-123</span>
     </div>
+    <span class="dev-badge">DEV</span>
     <div class="chat-actions">
       <button class="action-btn" onclick="newChat()">+ New Chat</button>
-      <button class="action-btn delete" onclick="deleteCurrentChat()">Delete Chat</button>
+      <button class="action-btn delete" onclick="deleteCurrentChat()">Delete</button>
     </div>
   </div>
 
   <div class="chat-list" id="chatList"></div>
 
-  <div class="chat-container" id="chat"></div>
-
-  <div class="input-bar">
-    <input type="text" id="input" placeholder="Ask about your cofounder situation..." autofocus>
-    <button id="sendBtn" onclick="sendMessage()">Send</button>
+  <div class="chat-container" id="chat">
+    <div class="welcome" id="welcome">
+      <h2>Cofounder Agreement Advisor</h2>
+    </div>
   </div>
 
-  <div class="disclaimer">This is educational guidance, not legal advice. Consult a qualified attorney for legal decisions.</div>
+  <div class="input-bar">
+    <div class="input-pill">
+      <input type="text" id="input" placeholder="Ask about your cofounder agreement..." autofocus>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="disclaimer">Educational guidance only — not legal advice. Consult a qualified attorney for legal decisions.</div>
 
   <script>
+    marked.setOptions({ breaks: true, gfm: true });
+
     let conversationHistory = [];
     let currentChatId = null;
     let chatsList = [];
@@ -356,20 +453,18 @@
       if (e.key === 'Enter' && !sendBtn.disabled) sendMessage();
     });
 
+    function hideWelcome() {
+      const w = document.getElementById('welcome');
+      if (w) w.remove();
+    }
+
     function addMessage(role, content, runId) {
+      hideWelcome();
       const div = document.createElement('div');
       div.className = `message ${role}`;
       if (role === 'assistant') {
-        div.innerHTML = formatMarkdown(content);
-        if (runId) {
-          const feedbackBar = document.createElement('div');
-          feedbackBar.className = 'feedback-bar';
-          feedbackBar.innerHTML = `
-            <button class="feedback-btn" onclick="sendFeedback('${runId}', 1, this)">&#x1F44D;</button>
-            <button class="feedback-btn" onclick="sendFeedback('${runId}', 0, this)">&#x1F44E;</button>
-          `;
-          div.appendChild(feedbackBar);
-        }
+        div.innerHTML = DOMPurify.sanitize(marked.parse(content));
+        if (runId) div.appendChild(makeFeedbackBar(runId));
       } else {
         const bubble = document.createElement('div');
         bubble.className = 'user-bubble';
@@ -380,17 +475,21 @@
       chatEl.scrollTop = chatEl.scrollHeight;
     }
 
-    function formatMarkdown(text) {
-      return text
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
-        .replace(/<\/ul>\s*<ul>/g, '')
-        .split('<p>').join('<p>')
+    function makeFeedbackBar(runId) {
+      const bar = document.createElement('div');
+      bar.className = 'feedback-bar';
+      bar.innerHTML = `
+        <button class="feedback-btn" onclick="sendFeedback('${runId}', 1, this)">Helpful</button>
+        <button class="feedback-btn" onclick="sendFeedback('${runId}', 0, this)">Not helpful</button>
+      `;
+      return bar;
+    }
+
+    function makeTypingIndicator() {
+      const div = document.createElement('div');
+      div.className = 'typing';
+      div.innerHTML = `<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>`;
+      return div;
     }
 
     async function sendMessage() {
@@ -399,18 +498,30 @@
 
       inputEl.value = '';
       sendBtn.disabled = true;
+      hideWelcome();
       addMessage('user', message);
 
-      // Create the assistant bubble immediately — text streams into it
+      const typingEl = makeTypingIndicator();
+      chatEl.appendChild(typingEl);
+      chatEl.scrollTop = chatEl.scrollHeight;
+
       const assistantDiv = document.createElement('div');
       assistantDiv.className = 'message assistant';
       const textSpan = document.createElement('span');
+      textSpan.className = 'streaming-text';
       assistantDiv.appendChild(textSpan);
-      chatEl.appendChild(assistantDiv);
-      chatEl.scrollTop = chatEl.scrollHeight;
 
       let fullResponse = '';
       let finalRunId = null;
+      let typingRemoved = false;
+
+      function removeTyping() {
+        if (!typingRemoved) {
+          typingEl.remove();
+          chatEl.appendChild(assistantDiv);
+          typingRemoved = true;
+        }
+      }
 
       try {
         const res = await fetch('http://localhost:8000/chat/stream', {
@@ -418,8 +529,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message,
-            user_id: document.getElementById('userId').value,
-            project_id: document.getElementById('projectId').value,
+            user_id: document.getElementById('userId').textContent,
+            project_id: document.getElementById('projectId').textContent,
             chat_id: currentChatId || '',
             conversation_history: conversationHistory,
             current_section: document.getElementById('section').value,
@@ -427,8 +538,10 @@
         });
 
         if (!res.ok) {
-          const data = await res.json();
-          assistantDiv.innerHTML = formatMarkdown(`Error: ${data.detail || 'Something went wrong'}`);
+          removeTyping();
+          const data = await res.json().catch(() => ({}));
+          assistantDiv.textContent = `Error: ${data.detail || 'Something went wrong'}`;
+          assistantDiv.style.color = '#DC2626';
           sendBtn.disabled = false;
           inputEl.focus();
           return;
@@ -444,7 +557,7 @@
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          buffer = lines.pop(); // keep any incomplete line for next chunk
+          buffer = lines.pop();
 
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
@@ -452,8 +565,9 @@
             try { payload = JSON.parse(line.slice(6)); } catch { continue; }
 
             if (payload.type === 'token') {
+              removeTyping();
               fullResponse += payload.content;
-              textSpan.textContent = fullResponse; // raw text while streaming
+              textSpan.textContent = fullResponse;
               chatEl.scrollTop = chatEl.scrollHeight;
             } else if (payload.type === 'done') {
               conversationHistory = payload.conversation_history;
@@ -463,27 +577,22 @@
                 loadChatList();
               }
             } else if (payload.type === 'error') {
+              removeTyping();
               fullResponse = `Error: ${payload.message}`;
-              assistantDiv.style.color = '#e74c6f';
+              assistantDiv.style.color = '#DC2626';
             }
           }
         }
 
-        // Apply markdown formatting and add feedback bar once stream is complete
-        assistantDiv.innerHTML = formatMarkdown(fullResponse);
-        if (finalRunId) {
-          const feedbackBar = document.createElement('div');
-          feedbackBar.className = 'feedback-bar';
-          feedbackBar.innerHTML = `
-            <button class="feedback-btn" onclick="sendFeedback('${finalRunId}', 1, this)">&#x1F44D;</button>
-            <button class="feedback-btn" onclick="sendFeedback('${finalRunId}', 0, this)">&#x1F44E;</button>
-          `;
-          assistantDiv.appendChild(feedbackBar);
-        }
+        removeTyping();
+        assistantDiv.innerHTML = DOMPurify.sanitize(marked.parse(fullResponse));
+        if (finalRunId) assistantDiv.appendChild(makeFeedbackBar(finalRunId));
+        chatEl.scrollTop = chatEl.scrollHeight;
 
       } catch (err) {
-        assistantDiv.textContent = 'Connection error: Is the server running on localhost:8000?';
-        assistantDiv.style.color = '#e74c6f';
+        removeTyping();
+        assistantDiv.textContent = 'Connection error — is the server running on localhost:8000?';
+        assistantDiv.style.color = '#DC2626';
       }
 
       sendBtn.disabled = false;
@@ -492,10 +601,8 @@
 
     async function sendFeedback(runId, score, btnEl) {
       const bar = btnEl.parentElement;
-      const buttons = bar.querySelectorAll('.feedback-btn');
-      buttons.forEach(b => b.disabled = true);
+      bar.querySelectorAll('.feedback-btn').forEach(b => b.disabled = true);
       btnEl.classList.add(score === 1 ? 'selected-up' : 'selected-down');
-
       try {
         await fetch('http://localhost:8000/feedback', {
           method: 'POST',
@@ -507,24 +614,24 @@
       }
     }
 
-    function showWelcome() {
-      chatEl.innerHTML = '';
-    }
-
     function newChat() {
       currentChatId = null;
       conversationHistory = [];
-      showWelcome();
+      chatEl.innerHTML = '';
+      const welcome = document.createElement('div');
+      welcome.className = 'welcome';
+      welcome.id = 'welcome';
+      welcome.innerHTML = `<h2>Cofounder Agreement Advisor</h2>`;
+      chatEl.appendChild(welcome);
       renderChatTabs();
       inputEl.focus();
     }
 
     async function deleteCurrentChat() {
       if (!currentChatId) return;
+      if (!confirm('Delete this chat?')) return;
       await fetch(`http://localhost:8000/chats/${currentChatId}`, { method: 'DELETE' });
-      currentChatId = null;
-      conversationHistory = [];
-      showWelcome();
+      newChat();
       loadChatList();
     }
 
@@ -532,39 +639,29 @@
       currentChatId = chatId;
       conversationHistory = [];
       chatEl.innerHTML = '';
-
       try {
         const res = await fetch(`http://localhost:8000/chat/${chatId}`);
         const data = await res.json();
-
         if (res.ok && data.messages) {
           conversationHistory = data.messages;
-
-          // Display all messages from the chat history
-          for (const msg of data.messages) {
-            addMessage(msg.role, msg.content);
-          }
+          for (const msg of data.messages) addMessage(msg.role, msg.content);
         }
-
         renderChatTabs();
       } catch (err) {
         console.error('Failed to switch chat:', err);
-        showWelcome();
         renderChatTabs();
       }
     }
 
     async function loadChatList() {
-      const userId = document.getElementById('userId').value;
-      const projectId = document.getElementById('projectId').value;
+      const userId = document.getElementById('userId').textContent;
+      const projectId = document.getElementById('projectId').textContent;
       try {
         const res = await fetch(`http://localhost:8000/chats/${userId}?project_id=${projectId}`);
         const data = await res.json();
         chatsList = data.chats || [];
         renderChatTabs();
-      } catch (err) {
-        // Server not running
-      }
+      } catch (err) { /* server not running */ }
     }
 
     function renderChatTabs() {
@@ -572,14 +669,13 @@
       for (const chat of chatsList) {
         const btn = document.createElement('button');
         btn.className = `chat-tab${chat.chatId === currentChatId ? ' active' : ''}`;
-        const date = new Date(chat.createdAt).toLocaleDateString();
-        btn.textContent = `Chat (${chat.messageCount} msgs) - ${date}`;
+        const date = new Date(chat.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        btn.textContent = `${date} · ${chat.messageCount} msgs`;
         btn.onclick = () => switchChat(chat.chatId);
         chatListEl.appendChild(btn);
       }
     }
 
-    // Load chat list on page load
     loadChatList();
   </script>
 </body>

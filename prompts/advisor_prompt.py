@@ -145,7 +145,6 @@ def _format_survey(survey: dict) -> str:
 
 def build_system_prompt(
     current_section: str = "",
-    agreement_details: dict = None,
     survey_context: dict = None,
     rag_topics: list = None,
 ) -> str:
@@ -154,7 +153,6 @@ def build_system_prompt(
 
     Args:
         current_section: Which survey section the user is currently on
-        agreement_details: Dict of agreement fields from Firestore form data (legacy, unused)
         survey_context: Full surveyData dict from the project's Firestore document
         rag_topics: List of topic categories available in the RAG knowledge base
 
@@ -162,7 +160,6 @@ def build_system_prompt(
         The full system prompt string to send to Claude
     """
 
-    details = agreement_details or {}
     survey = survey_context or {}
     topics = rag_topics or []
 
