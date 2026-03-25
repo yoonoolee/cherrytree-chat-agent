@@ -39,6 +39,19 @@ Set a spend limit on the Anthropic account to avoid surprise bills from abuse.
 
 ---
 
+## Future Agents
+
+### VC Agent
+An agent that looks at a cofounder agreement through an investor lens. Given the agreement terms, it can flag things that VCs typically push back on (single-trigger acceleration, unusual equity splits, missing IP assignment), explain what investors expect to see at different stages, and help founders anticipate due diligence questions before they're in a room with a VC. Could also simulate how a term sheet might interact with their existing cofounder agreement.
+
+### Proactive Advisor Agent
+A background agent that continuously watches the user's survey answers and surfaces comments and flags without the user having to ask. At the start of their session, users provide context about their specific situation (relationship history, company stage, roles, goals) — the agent uses that to make its feedback relevant rather than generic. As fields get filled in, it proactively identifies tensions, missing pieces, or things worth discussing with their cofounder. Different from the chatbot: the user doesn't trigger it, it just watches and annotates.
+
+### Comments Agent
+Users can leave comments anywhere in their agreement (on a clause, a field, a section). A Comments Agent monitors new comments and can respond — explaining what a clause means, flagging a potential issue, or prompting a conversation the cofounders should have. Could also notify the other cofounder when a comment is left, turning the agreement into a shared workspace rather than a solo form.
+
+---
+
 ## Completed
 
 - [x] FastAPI server with `/chat`, `/chat/stream`, `/health`, `/chats`, `/feedback` endpoints

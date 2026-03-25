@@ -250,10 +250,7 @@
       margin: 8px 0;
     }
 
-    .streaming-text {
-      white-space: pre-wrap;
-      color: #374151;
-    }
+
 
     /* ── Feedback ── */
     .feedback-bar {
@@ -507,9 +504,8 @@
 
       const assistantDiv = document.createElement('div');
       assistantDiv.className = 'message assistant';
-      const textSpan = document.createElement('span');
-      textSpan.className = 'streaming-text';
-      assistantDiv.appendChild(textSpan);
+      const markdownDiv = document.createElement('div');
+      assistantDiv.appendChild(markdownDiv);
 
       let fullResponse = '';
       let finalRunId = null;
@@ -567,7 +563,7 @@
             if (payload.type === 'token') {
               removeTyping();
               fullResponse += payload.content;
-              textSpan.textContent = fullResponse;
+              markdownDiv.innerHTML = DOMPurify.sanitize(marked.parse(fullResponse));
               chatEl.scrollTop = chatEl.scrollHeight;
             } else if (payload.type === 'done') {
               conversationHistory = payload.conversation_history;
@@ -585,7 +581,7 @@
         }
 
         removeTyping();
-        assistantDiv.innerHTML = DOMPurify.sanitize(marked.parse(fullResponse));
+        markdownDiv.innerHTML = DOMPurify.sanitize(marked.parse(fullResponse));
         if (finalRunId) assistantDiv.appendChild(makeFeedbackBar(finalRunId));
         chatEl.scrollTop = chatEl.scrollHeight;
 
