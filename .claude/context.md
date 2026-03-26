@@ -1,6 +1,6 @@
 ---
 name: Current session context
-saved: Wed Mar 25 09:46:20 PDT 2026
+saved: Wed Mar 25 11:56:47 PDT 2026
 description: What was being worked on at the end of the last session — resume point for next session
 type: project
 ---
@@ -9,29 +9,37 @@ type: project
 
 ### What we worked on
 
-1. **Welcome screen cleanup** — Removed the emoji icon and subtitle text from the "New Chat" welcome state in `static/index.html`. The `newChat()` function used to render a 🌳 icon + descriptive paragraph; now it only shows the `<h2>Cofounder Agreement Advisor</h2>` title. The initial welcome state (line 423) already only had the `<h2>`, so this matched it.
+**RAG underusage and score threshold investigation**
 
-2. **LangSmith MCP server setup** — User wanted to inspect agent tool usage (RAG calls, form reads, etc.) from within Claude Code. We:
-   - Searched for and confirmed an official LangSmith MCP server exists: `langchain-ai/langsmith-mcp-server`
-   - Used the hosted transport at `https://langsmith-mcp-server.onrender.com/mcp` (no local install needed since `uvx`/`uv` not installed)
-   - Retrieved the LangSmith API key from `.env`
-   - Added via CLI: `claude mcp add --transport http langsmith https://langsmith-mcp-server.onrender.com/mcp --header "LANGSMITH-API-KEY:<key>"`
-   - Saved to `/Users/averylee/.claude.json` scoped to this project
+Problem: The agent wasn't calling `rag_search` for domain-specific questions (e.g. "how do people generally split equity" got answered from model knowledge with no tool call). Two root causes identified:
 
-### Why session is ending
-LangSmith MCP session expired mid-session. The hosted server at `langsmith-mcp-server.onrender.com` uses stateful sessions that drop after inactivity — it connected fine at session start but errored with "Session not found" later. Restarting Claude Code to re-establish the connection.
+1. **Claude not deciding to search** — the `<tools>` prompt was too passive ("search when related"). Fixed by making it directive: "search before answering any domain-specific question, don't rely on general knowledge when grounded guidance is available."
 
-### State of the codebase
-- All changes committed and pushed (`f1afad8`). Working tree is clean.
+2. **Score threshold miscalibration** — scores were compressing into 0.65–0.90 regardless of relevance because:
+   - High-dimensional vector spaces (1536 dims) cause cosine similarity scores to cluster (concentration of measure)
+   - Domain-specific KB means all docs live in the same semantic neighborhood — no "far away" documents to create score spread
+
+### Decisions made
+
+- **`top_k`**: Set to 100 (Pinecone's max) — effectively "return all docs" so the threshold does the filtering, not an arbitrary top-k cap
+- **Score threshold**: Set to 0.80 in `agent/tools.py` — cuts out weak matches while keeping relevant ones. 0.75 is noise for this KB; 0.80 is the practical signal floor
+- **Prompt**: `<tools>` section updated to be directive about when to search
+
+### State of changes
+
+All changes made but **not yet committed or pushed**:
+- `agent/tools.py` — top_k=100, score threshold 0.80
+- `prompts/advisor_prompt.py` — `<tools>` section rewritten
+- `CLAUDE.md` — stack section updated to reflect top-k=100, threshold 0.80
 
 ### Next steps
 
-1. **Restart Claude Code** to re-establish the LangSmith MCP session
-2. **Verify LangSmith MCP reconnected** — try `list_projects` or `fetch_runs` on `cherrytree-chat-agent`
-3. **Inspect recent traces** — fetch last 10 root runs, look at tool usage, latency, errors
-4. **Implement tool_use SSE events** (deferred) — stream `on_tool_start` events and render inline status lines in the test UI (e.g. `searching knowledge base...`)
-   - In `agent/graph.py` `stream_agent()`: catch `on_tool_start` and yield `{"type": "tool_use", "name": "<tool_name>"}`
-   - In `static/index.html`: render as transient status lines above the response
-
-### Carry-over from previous session
-The RAG scoring threshold issue was not resolved: scores are compressed into 0.6–0.85 regardless of relevance, making the `score < 0.7` threshold in `agent/tools.py` meaningless. Decision on how to fix was deferred.
+1. **Test the RAG changes** — run the local server and ask a domain-specific question (e.g. "how do people split equity?") — verify a `rag_search` tool call appears in LangSmith traces
+2. **Check the score key** — confirm Pinecone returns scores under `_score` key (the threshold filter uses `h.get("_score", 0)`) — if it's a different key, filter won't work silently
+3. **Commit and push** the RAG + prompt changes
+4. **Address remaining items from the prompt review list** (from earlier this session):
+   - Fix broken sentence in `<response_format>` item 1
+   - Add back `<conversation_rules>` (removed at some point, was in Tim's version)
+   - Add empty survey handling guidance
+   - Mental health / distress guardrails (flagged as P1 in CLAUDE.md)
+   - Merge `<caution>` / `<core_approach>` overlap on "ask for context before acting"

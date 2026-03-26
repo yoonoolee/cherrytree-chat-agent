@@ -214,6 +214,7 @@
       border-radius: 16px 16px 4px 16px;
       max-width: 65%;
       font-size: 14px;
+      white-space: pre-wrap;
     }
 
     .message.assistant { color: #374151; }
@@ -335,7 +336,7 @@
       box-shadow: 0 1px 8px rgba(0,0,0,0.1);
     }
 
-    .input-pill input {
+    .input-pill textarea {
       flex: 1;
       font-family: inherit;
       font-size: 14px;
@@ -344,9 +345,14 @@
       border: none;
       outline: none;
       padding: 4px 0;
+      resize: none;
+      overflow-y: auto;
+      max-height: 120px;
+      line-height: 1.5;
     }
 
-    .input-pill input::placeholder { color: #9CA3AF; }
+    .input-pill textarea::placeholder { color: #9CA3AF; }
+    .input-pill { align-items: flex-end; }
 
     .send-btn {
       width: 34px;
@@ -423,7 +429,7 @@
 
   <div class="input-bar">
     <div class="input-pill">
-      <input type="text" id="input" placeholder="Ask about your cofounder agreement..." autofocus>
+      <textarea id="input" placeholder="Ask about your cofounder agreement..." rows="1" autofocus></textarea>
       <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
@@ -440,6 +446,7 @@
     let conversationHistory = [];
     let currentChatId = null;
     let chatsList = [];
+    let abortController = null;
 
     const chatEl = document.getElementById('chat');
     const inputEl = document.getElementById('input');
@@ -447,7 +454,18 @@
     const chatListEl = document.getElementById('chatList');
 
     inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !sendBtn.disabled) sendMessage();
+      if (e.key === 'Enter' && !e.shiftKey && !sendBtn.disabled) {
+        e.preventDefault();
+        sendMessage();
+      }
+      if (e.key === 'Escape' && abortController) {
+        abortController.abort();
+      }
+    });
+
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = inputEl.scrollHeight + 'px';
     });
 
     function hideWelcome() {
@@ -494,6 +512,7 @@
       if (!message) return;
 
       inputEl.value = '';
+      inputEl.style.height = 'auto';
       sendBtn.disabled = true;
       hideWelcome();
       addMessage('user', message);
@@ -520,9 +539,11 @@
       }
 
       try {
+        abortController = new AbortController();
         const res = await fetch('http://localhost:8000/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
           body: JSON.stringify({
             message,
             user_id: document.getElementById('userId').textContent,
@@ -546,6 +567,16 @@
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let charQueue = [];
+        let displayed = '';
+        let streamDone = false;
+
+        const typeInterval = setInterval(() => {
+          if (charQueue.length === 0) return;
+          displayed += charQueue.shift();
+          markdownDiv.innerHTML = DOMPurify.sanitize(marked.parse(displayed));
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }, 16);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -563,8 +594,7 @@
             if (payload.type === 'token') {
               removeTyping();
               fullResponse += payload.content;
-              markdownDiv.innerHTML = DOMPurify.sanitize(marked.parse(fullResponse));
-              chatEl.scrollTop = chatEl.scrollHeight;
+              charQueue.push(...payload.content);
             } else if (payload.type === 'done') {
               conversationHistory = payload.conversation_history;
               finalRunId = payload.run_id;
@@ -580,17 +610,31 @@
           }
         }
 
+        await new Promise(resolve => {
+          const wait = setInterval(() => {
+            if (charQueue.length === 0) { clearInterval(wait); resolve(); }
+          }, 16);
+        });
+        clearInterval(typeInterval);
         removeTyping();
         markdownDiv.innerHTML = DOMPurify.sanitize(marked.parse(fullResponse));
         if (finalRunId) assistantDiv.appendChild(makeFeedbackBar(finalRunId));
         chatEl.scrollTop = chatEl.scrollHeight;
 
       } catch (err) {
-        removeTyping();
-        assistantDiv.textContent = 'Connection error — is the server running on localhost:8000?';
-        assistantDiv.style.color = '#DC2626';
+        clearInterval(typeInterval);
+        if (err.name === 'AbortError') {
+          charQueue = [];
+          removeTyping();
+          assistantDiv.remove();
+        } else {
+          removeTyping();
+          assistantDiv.textContent = 'Connection error — is the server running on localhost:8000?';
+          assistantDiv.style.color = '#DC2626';
+        }
       }
 
+      abortController = null;
       sendBtn.disabled = false;
       inputEl.focus();
     }

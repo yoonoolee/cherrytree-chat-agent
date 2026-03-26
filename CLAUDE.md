@@ -6,7 +6,7 @@ Python/FastAPI AI advisor service. Runs on Google Cloud Run. Integrated into the
 
 - **LLM:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)
 - **Agent framework:** LangGraph (ReAct pattern — reason → tool call → reason)
-- **Vector DB:** Pinecone (RAG, top-k=3, similarity threshold 0.7)
+- **Vector DB:** Pinecone (RAG, top-k=100, score threshold 0.80 — returns all docs then filters by relevance)
 - **Embeddings:** OpenAI `text-embedding-3-small`
 - **Chat storage:** Firestore (`projects/{projectId}/chats/{chatId}`)
 - **Observability:** LangSmith
@@ -41,7 +41,7 @@ uvicorn main:app --reload
 
 ## Agent Use Cases
 
-The agent is a full cofounder agreement advisor — not scoped to just the section the user is currently on. Users can:
+The agent is a full cofounder advisor — covering both the legal/structural agreement AND the relationship dynamics between cofounders. It is not scoped to just the section the user is currently on. Users can:
 
 - **Ask educational questions** — "what is a cliff?", "how does a shotgun clause work?", "what's the difference between single and double-trigger acceleration?"
 - **Get advice on what to fill in** — based on their specific situation (roles, commitment level, relationship history), the agent can help them think through what answers make sense for them
@@ -127,14 +127,14 @@ See `TODO.md` for the full pre-launch checklist including Cloud Run deployment s
 
 ## Platform Overview
 
-Cherrytree is a SaaS platform for startup cofounders to create legally sound cofounder agreements. Two subprojects work together:
+Cherrytree is a SaaS platform for startup cofounders to build strong cofounder partnerships — covering both the legal/structural agreement and the relationship dynamics between cofounders. Two subprojects work together:
 
 | Directory | Role | Stack |
 |-----------|------|-------|
 | `cherrytree-cofounder-agreement/` | Main web app (frontend + backend) | React 19, Firebase, Clerk, Stripe |
 | `cherrytree-chat-agent/` | AI advisor chatbot service | Python, FastAPI, LangGraph, Claude, Pinecone |
 
-The web app embeds the chat agent as a sidebar. The agent reads the user's in-progress agreement from Firestore and advises on equity, vesting, IP, decision-making, etc.
+The web app embeds the chat agent as a sidebar. The agent reads the user's in-progress agreement from Firestore and advises on both structural topics (equity, vesting, IP, decision-making) and relationship topics (cofounder dynamics, conflict resolution, communication, partner selection).
 
 ## High-Level Architecture
 

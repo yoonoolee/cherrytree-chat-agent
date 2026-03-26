@@ -16,16 +16,18 @@ from agent.services import pinecone_index, db
 
 @tool
 def rag_search(query: str) -> str:
-    """Search the knowledge base for relevant legal information and cofounder scenario guidance.
+    """Search the knowledge base for cofounder agreement guidance, legal concepts, and scenario advice.
 
-    Use this when the user asks about specific cofounder situations, legal concepts,
-    equity frameworks, or needs scenario-based advice.
+    Use this for any question about equity splits, vesting, IP, decision-making, non-competes,
+    cofounder conflict, or startup legal frameworks. Prefer searching over relying on general
+    knowledge when the question is domain-specific — the knowledge base has curated guidance
+    that is more reliable than general knowledge for these topics.
     """
     # Search Pinecone — the integrated embedding model converts the query to a vector
     # and finds the most similar documents
     results = pinecone_index.search(
         namespace="cherrytree",
-        query={"top_k": 3, "inputs": {"text": query}},
+        query={"top_k": 100, "inputs": {"text": query}},
         fields=["title", "content", "topic"]
     )
 
@@ -33,10 +35,14 @@ def rag_search(query: str) -> str:
     if not hits:
         return "No relevant knowledge base documents found. Answer from your general knowledge."
 
-    # Format the results as context for Claude.
-    # No score threshold — dense embeddings compress all scores into a narrow band (~0.6–0.85)
-    # regardless of actual relevance, so any cutoff is arbitrary. Claude handles irrelevant
-    # context gracefully. Revisit with a reranker once the knowledge base grows to 50-100+ docs.
+    # Filter by score. Domain-specific KB compresses scores into ~0.65–0.90 — 0.80 cuts
+    # out weak matches while keeping genuinely relevant ones. Revisit with a reranker
+    # or adjusted threshold once KB grows to 50-100+ docs.
+    SCORE_THRESHOLD = 0.80
+    hits = [h for h in hits if h.get("_score", 0) >= SCORE_THRESHOLD]
+    if not hits:
+        return "No sufficiently relevant knowledge base documents found. Answer from your general knowledge."
+
     context_parts = []
     for hit in hits:
         fields = hit.get("fields", {})
