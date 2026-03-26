@@ -1,125 +1,145 @@
 """
-Master Evaluation Runner
+Cherrytree Advisor Evaluation Runner
 
-Runs all evaluation metrics and generates a comprehensive report.
+Pulls the dataset from LangSmith, runs the agent against each test case,
+scores results with evaluators, and pushes scores back to LangSmith.
 
 Usage:
     cd cherrytree-chat-agent
     source venv/bin/activate
-    python eval/run_evaluation.py
+    python eval/run_evaluation.py [--experiment-name "my-run"]
+
+View results at: https://smith.langchain.com/ → Datasets → cherrytree-advisor-evals
 """
 
+import asyncio
 import sys
+import argparse
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Import evaluation modules
-from test_retrieval import run_evaluation as run_retrieval_eval
-from test_citation import run_citation_evaluation
+load_dotenv(override=True)
+
+from langsmith import evaluate, Client
+from langchain_core.runnables import RunnableLambda
+
+from agent.graph import graph, RAG_TOPICS
+from prompts.advisor_prompt import build_system_prompt
+from eval.evaluators import EVALUATORS
+
+DATASET_NAME = "cherrytree-advisor-evals"
 
 
-def print_header(title):
-    """Print a formatted header."""
-    print("\n" + "=" * 80)
-    print(f" {title}")
-    print("=" * 80 + "\n")
+# ---------------------------------------------------------------------------
+# Target function — runs the agent for a single eval input
+# ---------------------------------------------------------------------------
 
+async def _run_agent_async(inputs: dict) -> dict:
+    """
+    Run the agent against a single eval test case.
+    Bypasses Firestore — uses survey_context and conversation directly from inputs.
+    """
+    conversation = inputs.get("conversation", [])
+    survey_context = inputs.get("survey_context", {})
+    current_section = inputs.get("current_section", "")
 
-def run_full_evaluation():
-    """Run all evaluation tests and generate final report."""
+    # Build messages from conversation history
+    messages = [{"role": m["role"], "content": m["content"]} for m in conversation]
 
-    print_header("CHERRYTREE CHATBOT EVALUATION SUITE")
-    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    result = await graph.ainvoke({
+        "messages": messages,
+        "project_id": "eval",
+        "current_section": current_section,
+        "survey_context": survey_context,
+        "response": "",
+    })
 
-    # 1. Retrieval Precision Test
-    print_header("TEST 1: RETRIEVAL PRECISION@3")
-    print("Measuring: Does Pinecone return the right articles for test queries?\n")
+    response = result.get("response", "")
 
-    try:
-        retrieval_results, avg_precision = run_retrieval_eval()
-        retrieval_success = True
-    except Exception as e:
-        print(f"❌ Retrieval evaluation failed: {e}")
-        retrieval_success = False
-        avg_precision = 0
-
-    # 2. Citation Grounding Test
-    print_header("TEST 2: CITATION GROUNDING")
-    print("Measuring: Do responses reference source material?\n")
-
-    try:
-        citation_results = run_citation_evaluation()
-        avg_citation = sum(r["citation_score"] for r in citation_results) / len(citation_results)
-        disclaimer_rate = sum(1 for r in citation_results if r["has_disclaimer"]) / len(citation_results)
-        citation_success = True
-    except Exception as e:
-        print(f"❌ Citation evaluation failed: {e}")
-        citation_success = False
-        avg_citation = 0
-        disclaimer_rate = 0
-
-    # Final Report
-    print_header("FINAL EVALUATION REPORT")
-
-    print("METRICS SUMMARY:")
-    print("-" * 80)
-    print(f"  Retrieval Precision@3:  {avg_precision:.1%}")
-    print(f"  Citation Grounding:     {avg_citation:.1%}")
-    print(f"  Legal Disclaimer Rate:  {disclaimer_rate:.1%}")
-    print("-" * 80)
-
-    # Overall grade
-    overall_score = (avg_precision + avg_citation) / 2
-    if overall_score >= 0.85:
-        grade = "🟢 EXCELLENT"
-    elif overall_score >= 0.70:
-        grade = "🟡 GOOD"
-    elif overall_score >= 0.50:
-        grade = "🟠 FAIR"
-    else:
-        grade = "🔴 NEEDS IMPROVEMENT"
-
-    print(f"\nOverall Performance: {grade} ({overall_score:.1%})")
-
-    # Recommendations
-    print("\nRECOMMENDATIONS:")
-    print("-" * 80)
-
-    if avg_precision < 0.85:
-        print("  ⚠️  Retrieval precision below target (85%)")
-        print("      → Review test cases and knowledge base coverage")
-        print("      → Consider adding more articles or improving embeddings")
-
-    if avg_citation < 0.90:
-        print("  ⚠️  Citation rate below target (90%)")
-        print("      → Agent may not be using retrieved content effectively")
-        print("      → Update prompt to encourage grounding in source material")
-
-    if disclaimer_rate < 1.0:
-        print("  ⚠️  Some responses missing legal disclaimer")
-        print("      → Update prompt to ensure disclaimer in every response")
-
-    if not retrieval_success or not citation_success:
-        print("  ❌ Some tests failed to run")
-        print("      → Check error messages above")
-
-    print("\n" + "=" * 80)
-    print("\nEvaluation complete!\n")
+    # Extract tool calls from the graph result for rag_called eval
+    tool_calls = []
+    for msg in result.get("messages", []):
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tool_calls.append({"name": tc.get("name", "")})
 
     return {
-        "retrieval_precision": avg_precision,
-        "citation_score": avg_citation,
-        "disclaimer_rate": disclaimer_rate,
-        "overall_score": overall_score
+        "response": response,
+        "tool_calls": tool_calls,
     }
 
 
+def run_agent_for_eval(inputs: dict) -> dict:
+    """Sync wrapper for the async agent runner."""
+    return asyncio.run(_run_agent_async(inputs))
+
+
+# ---------------------------------------------------------------------------
+# Evaluator wrapper — routes each example to only its applicable evaluators
+# ---------------------------------------------------------------------------
+
+def make_evaluator(key: str):
+    """Wrap a single evaluator function so it skips examples that don't need it."""
+    fn = EVALUATORS[key]
+    def wrapped(run, example):
+        return fn(run, example)
+    wrapped.__name__ = key
+    return wrapped
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main(experiment_name: str = None):
+    if not experiment_name:
+        experiment_name = f"eval-{datetime.now().strftime('%Y%m%d-%H%M')}"
+
+    print(f"\nRunning eval experiment: {experiment_name}")
+    print(f"Dataset: {DATASET_NAME}")
+    print(f"View at: https://smith.langchain.com/\n")
+
+    # All evaluators — each one checks if it applies to the example internally
+    evaluators = [make_evaluator(k) for k in EVALUATORS]
+
+    results = evaluate(
+        run_agent_for_eval,
+        data=DATASET_NAME,
+        evaluators=evaluators,
+        experiment_prefix=experiment_name,
+        max_concurrency=3,
+    )
+
+    # Print summary
+    print(f"\n{'─' * 60}")
+    print(f"Experiment complete: {experiment_name}")
+    print(f"{'─' * 60}")
+
+    scores = {}
+    for result in results:
+        for feedback in result.get("feedback", []):
+            key = feedback.key
+            score = feedback.score
+            if score is not None:
+                if key not in scores:
+                    scores[key] = []
+                scores[key].append(score)
+
+    if scores:
+        print(f"\n{'Evaluator':<30} {'Avg Score':<12} {'Count'}")
+        print(f"{'─' * 55}")
+        for key in sorted(scores):
+            vals = scores[key]
+            avg = sum(vals) / len(vals)
+            print(f"{key:<30} {avg:<12.2f} {len(vals)}")
+    else:
+        print("No scores returned — check LangSmith for results.")
+
+    print(f"\nFull results: https://smith.langchain.com/\n")
+
+
 if __name__ == "__main__":
-    try:
-        results = run_full_evaluation()
-        sys.exit(0)
-    except KeyboardInterrupt:
-        print("\n\nEvaluation interrupted by user")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n\n❌ Evaluation failed: {e}")
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment-name", type=str, default=None)
+    args = parser.parse_args()
+    main(experiment_name=args.experiment_name)

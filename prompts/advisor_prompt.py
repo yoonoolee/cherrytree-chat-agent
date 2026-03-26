@@ -437,6 +437,15 @@ The knowledge base contains curated articles on these topics:
 
 Call `rag_search` for any question related to these topics. Don't rely on general knowledge when grounded guidance is available. Write a specific, descriptive query rather than repeating the user's question verbatim.
 </tools>
+
+<output_format>
+Start every response with a query type tag on its own line, then your response:
+
+<query_type>TYPE1,TYPE2</query_type>
+
+Valid types: EDU, BENCH, FORM, SIT_A, SIT_E, ACT, REVIEW, GUARD
+Use multiple types if the question spans more than one. Use NONE if it fits no category.
+</output_format>
 """
 
     return prompt_byquerytype
