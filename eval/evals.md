@@ -1,60 +1,100 @@
 # Evaluation Plan
 
-Evals run via `eval/run_evaluation.py` against a LangSmith dataset. Each test case is a conversation (list of messages) with a ground truth label and expected behavior description. The last message in the conversation is the one being evaluated.
+Evals run via `eval/run_evaluation.py` against a LangSmith dataset (`cherrytree-advisor-evals`).
+Each test case is a conversation with `eval_checks` — a typed dict of expected behaviors.
+The last message in the conversation is the one being evaluated.
 
-## Current Evals
+## Evaluator Types
 
-### 1. Query Type Classification
-- Predicted type list (emitted as `<query_type>` tag in response) matches ground truth list
-- Types can be a single value, multiple, or none
-- **Method:** Programmatic — parse tag, compare against ground truth list
+| Method | Description |
+|--------|-------------|
+| Programmatic | Deterministic — parses output or inspects LangSmith trace |
+| LLM-as-judge | Single Haiku call per test case, evaluates all applicable checks at once |
 
-### 2. Response Mode
-- What is the response doing: answering, analyzing, asking followups, giving next steps, or a mix
-- Compare against expected mode(s) defined in dataset
+## eval_checks Value Types
+
+| Type | Meaning | Scoring |
+|------|---------|---------|
+| `false` | Strictly absent — wrong if present | 1 if absent, 0 if present |
+| `true` / `"description"` / `["list"]` | Required / expected | 0=poor, 0.5=adequate, 1=excellent |
+| `"It is acceptable..."` string | Optional — absent is fine, present is evaluated | NOT_PRESENT=1, PRESENT_CORRECT=0.75, PRESENT_WRONG=0.25 |
+
+The `"It is acceptable"` prefix is the programmatic signal for optional checks. The full description also tells the judge what "correct" looks like if the behavior does appear.
+
+## Evaluators
+
+All 12 evaluators apply to all 8 query types (EDU, BENCH, FORM, SIT_A, SIT_E, ACT, REVIEW, GUARD).
+
+### 1. query_type
+- Did the model classify the query correctly?
+- Parsed from `<query_type>...</query_type>` tag emitted in response (stripped from UI)
+- Exact match → 1, partial overlap → 0.5, wrong → 0
+- **Method:** Programmatic
+
+### 2. is_rag_called
+- Did the agent call `rag_search` — or correctly not call it?
+- **Method:** Programmatic (LangSmith trace inspection)
+
+### 3. response_mode
+- Did the response use the right mode(s)? (`answering`, `analyzing`, `asking_followups`, `giving_next_steps`)
+- Multiple modes allowed
 - **Method:** LLM-as-judge
 
-### 3. Filler Phrases
-- Response contains none of: "I hear you", "that's a great question", "I understand", "absolutely", "certainly", "of course"
-- **Method:** Programmatic string match
-
-### 4. EDU / BENCH — RAG usage
-- Agent called `rag_search` before answering
-- **Method:** Programmatic via LangSmith trace tool call inspection
-
-### 5. EDU / BENCH — No fabricated stats
-- Response does not contain made-up percentages, statistics, or specific data points
+### 4. no_fabricated_stats
+- Did the response avoid made-up percentages, statistics, or specific data points?
+- Qualitative observations and explicitly named sources are acceptable
 - **Method:** LLM-as-judge
 
-### 6. EDU / BENCH — Source citation
-- Response cites a named source when making a claim (e.g. "YC generally recommends...", "According to NVCA templates...")
+### 5. is_source_cited
+- Did the response cite a named source when expected — or correctly avoid citing when not?
+- Named source = explicitly mentions YC, NVCA, specific founders, named studies, etc.
 - **Method:** LLM-as-judge
 
-### 7. SIT_A / SIT_E — Follow-up question quality
-- When the agent asks for more context, the follow-up question is relevant and focused
-- Compare against expected follow-up intent defined in dataset
+### 6. answering_quality
+- Did the response answer correctly and accurately for this specific case?
 - **Method:** LLM-as-judge
 
-### 8. SIT_E — Response stance
-- Expected stance defined in dataset: reassuring / asking followups / flagging bad situation
-- Did the response match the expected stance?
+### 7. analyzing_quality
+- Did the response analyze the situation correctly — or correctly avoid analyzing when not appropriate?
 - **Method:** LLM-as-judge
 
-### 9. ACT — Next step quality
-- Is the next step specific, actionable, and appropriate for the situation?
-- Compare against expected next step intent defined in dataset
+### 8. followup_quality
+- Did the response ask the right follow-up questions — or correctly avoid asking when not needed?
 - **Method:** LLM-as-judge
 
-### 10. FORM / REVIEW — Agreement field references
-- Which specific agreement fields were referenced (list)
-- Quality of analysis given those fields
-- Compare against expected fields and analysis intent defined in dataset
+### 9. next_step_quality
+- Did the response give the right next steps — or correctly avoid giving steps when not appropriate?
 - **Method:** LLM-as-judge
 
-### 11. GUARD — Decline and redirect
-- Agent declined the off-topic or out-of-scope request
-- Agent redirected to cofounder topics
+### 10. is_form_referenced
+- Did the response reference form/survey data when it should — or correctly avoid it when not relevant?
 - **Method:** LLM-as-judge
+
+### 11. sit_e_stance
+- Did the response take the right emotional stance? (`reassuring`, `asking_followups`, `flagging_bad_situation`)
+- Only meaningful for SIT_E cases; set to `false` on all other types to verify no emotional stance is taken
+- **Method:** LLM-as-judge
+
+### 12. is_declined
+- Did the response decline when it should — or correctly answer when it should not decline?
+- **Method:** LLM-as-judge
+
+---
+
+## Dataset
+
+39 test cases across 8 query types. Managed in `eval/eval_dataset.json`, uploaded to LangSmith via `eval/dataset.py`.
+
+| Type | Cases | Description |
+|------|-------|-------------|
+| EDU | 6 | Educational questions about agreement concepts |
+| BENCH | 4 | Benchmark questions requiring named source citations |
+| FORM | 5 | Advice on what to fill into the agreement |
+| SIT_A | 5 | Situational analysis — cofounder dynamics |
+| SIT_E | 6 | Emotional/relational situations at the agreement creation stage |
+| ACT | 4 | Action-oriented questions needing next steps |
+| REVIEW | 4 | Review of filled agreement sections |
+| GUARD | 5 | Out-of-scope or inappropriate requests |
 
 ---
 
@@ -68,6 +108,6 @@ Evals run via `eval/run_evaluation.py` against a LangSmith dataset. Each test ca
 
 ### RAG retrieval quality
 - For a given query, is the relevant document in the top k results? (Success@k)
-- Does the response use what was retrieved, or ignore it and answer from model knowledge? (grounding)
+- Does the response use what was retrieved, or ignore it? (grounding)
 - **Method:** Success@k programmatic, grounding via LLM-as-judge
 - **Status:** Deferred — implement after knowledge base expands to 50+ docs

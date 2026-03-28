@@ -50,6 +50,24 @@ _QUALITY_SCALE  = "Score: 0=poor, 0.5=adequate, 1=excellent"
 _QUALITY_FORMAT = "{key}_SCORE: <0|0.5|1>\n{key}_REASON: <one sentence>"
 _VERDICT_FORMAT = "{key}_VERDICT: <{options}>\n{key}_REASON: <one sentence>"
 
+# Optional check rubric — used when eval_checks value starts with "It is acceptable"
+# Absent = acceptable (1.0), present+correct = 0.75, present+wrong = 0.25
+_OPTIONAL_RUBRIC = """
+EVAL: {key} (optional)
+{description}
+Determine which applies:
+- NOT_PRESENT: this behavior does not appear in the response (acceptable)
+- PRESENT_CORRECT: this behavior appears and is handled correctly per the description
+- PRESENT_WRONG: this behavior appears but is incorrect, poor, or contradicts the description
+{verdict_format}
+"""
+
+OPTIONAL_VERDICT_SCORES = {
+    "NOT_PRESENT":     1.0,
+    "PRESENT_CORRECT": 0.75,
+    "PRESENT_WRONG":   0.25,
+}
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -243,31 +261,42 @@ def eval_batch_judge(run, example):
     conversation     = example.inputs.get("conversation", [])
     survey_context   = example.inputs.get("survey_context", {})
     rubric_blocks = []
+    optional_keys = set()
     for key in applicable:
-        template = RUBRICS[key]
-        options  = VERDICT_OPTIONS.get(key, "")
-        # For bool/list/null fields, convert to a useful description for Haiku
-        raw_val = eval_checks[key]
-        if isinstance(raw_val, bool):
-            if raw_val:
-                description = "YES — expected"
-            else:
-                description = "This behavior should be ABSENT — score 1 if the response does NOT do this, 0 if it does"
-        elif isinstance(raw_val, list):
-            description = ", ".join(raw_val)
-        elif raw_val is None:
-            description = "not applicable"
-        else:
-            description = raw_val
+        raw_val    = eval_checks[key]
+        is_optional = isinstance(raw_val, str) and raw_val.startswith("It is acceptable")
 
-        block = template.format(
-            description=description,
-            response_mode=eval_checks.get(RESPONSE_MODE, []),
-            survey_context=survey_context,
-            scale=_QUALITY_SCALE,
-            score_format=_QUALITY_FORMAT.format(key=key),
-            verdict_format=_VERDICT_FORMAT.format(key=key, options=options) if options else "",
-        )
+        if is_optional:
+            optional_keys.add(key)
+            block = _OPTIONAL_RUBRIC.format(
+                key=key,
+                description=raw_val,
+                verdict_format=_VERDICT_FORMAT.format(key=key, options="NOT_PRESENT|PRESENT_CORRECT|PRESENT_WRONG"),
+            )
+        else:
+            template = RUBRICS[key]
+            options  = VERDICT_OPTIONS.get(key, "")
+            # Convert typed values to descriptions for Haiku
+            if isinstance(raw_val, bool):
+                if raw_val:
+                    description = "YES — expected"
+                else:
+                    description = "This behavior should be ABSENT — score 1 if the response does NOT do this, 0 if it does"
+            elif isinstance(raw_val, list):
+                description = ", ".join(raw_val)
+            elif raw_val is None:
+                description = "not applicable"
+            else:
+                description = raw_val
+
+            block = template.format(
+                description=description,
+                response_mode=eval_checks.get(RESPONSE_MODE, []),
+                survey_context=survey_context,
+                scale=_QUALITY_SCALE,
+                score_format=_QUALITY_FORMAT.format(key=key),
+                verdict_format=_VERDICT_FORMAT.format(key=key, options=options) if options else "",
+            )
         rubric_blocks.append(block.strip())
 
     prompt = f"""You are evaluating an AI cofounder advisor's response. Answer each eval below independently.
@@ -295,7 +324,10 @@ AI response:
 
         if verdict_match:
             verdict = verdict_match.group(1).upper()
-            score   = VERDICT_SCORES.get(verdict, 0)
+            if key in optional_keys:
+                score = OPTIONAL_VERDICT_SCORES.get(verdict, 0)
+            else:
+                score = VERDICT_SCORES.get(verdict, 0)
         elif score_match:
             score = float(score_match.group(1))
         else:
