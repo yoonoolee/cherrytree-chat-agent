@@ -1,0 +1,13 @@
+Evaluator,Method,Description,EDU,BENCH,FORM,SIT_A,SIT_E,ACT,REVIEW,GUARD
+query_type,Programmatic,Parses <query_type> tag — did the model classify correctly?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+response_mode,Haiku judge,"Did the response use the right mode? (answering, analyzing, asking_followups, giving_next_steps)",TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+is_rag_called,LangSmith trace,Did the agent call rag_search — or correctly not call it?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+no_fabricated_stats,Haiku judge,Did the response avoid made-up numbers or statistics?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+is_source_cited,Haiku judge,"Did the response cite a named source when it should — or correctly avoid citing when it shouldn't?",TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+answering_quality,Haiku judge,Did the response answer correctly and accurately for this specific case?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+analyzing_quality,Haiku judge,Did the response analyze the situation correctly — or correctly avoid analyzing when not appropriate?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+followup_quality,Haiku judge,Did the response ask the right follow-up questions — or correctly avoid asking when not needed?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+next_step_quality,Haiku judge,Did the response give the right next steps — or correctly avoid giving steps when not appropriate?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+is_form_referenced,Haiku judge,Did the response reference form data when it should — or correctly avoid it when not relevant?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+sit_e_stance,Haiku judge,"Did the response take the right emotional stance? (reassuring, asking_followups, flagging_bad_situation)",TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+is_declined,Haiku judge,Did the response decline the request when it should — or correctly answer when it should not decline?,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE

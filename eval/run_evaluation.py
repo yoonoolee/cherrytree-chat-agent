@@ -107,7 +107,7 @@ def main(experiment_name: str = None):
         data=DATASET_NAME,
         evaluators=evaluators,
         experiment_prefix=experiment_name,
-        max_concurrency=3,
+        max_concurrency=1,
     )
 
     # Print summary
