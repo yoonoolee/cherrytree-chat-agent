@@ -71,11 +71,6 @@ def _parse_query_type_tag(response: str) -> list[str]:
 def _strip_query_type_tag(response: str) -> str:
     return re.sub(r"<query_type>.*?</query_type>\n?", "", response, flags=re.IGNORECASE).strip()
 
-def _get_expected_behavior(outputs: dict) -> str:
-    eb = outputs.get("expected_behavior", "")
-    if isinstance(eb, list):
-        return " ".join(eb)
-    return eb
 
 def _call_judge(prompt: str, retries: int = 4, base_delay: float = 15.0) -> str:
     """Call Claude Haiku and return raw text. Retries with exponential backoff on 429."""
@@ -102,7 +97,7 @@ def eval_query_type(run, example):
         return _skip(key)
 
     predicted = _parse_query_type_tag(run.outputs.get("response", ""))
-    expected = [t.upper() for t in example.outputs.get(QUERY_TYPE, [])]
+    expected = [t.upper() for t in _get_eval_checks(example).get(QUERY_TYPE, [])]
 
     if not predicted:
         return {"key": key, "score": 0, "comment": "No <query_type> tag found in response"}
@@ -125,16 +120,18 @@ def eval_is_rag_called(run, example):
     if not _should_run(key, example):
         return _skip(key)
 
-    description = _get_eval_checks(example).get(key, "")
-    tool_calls  = run.outputs.get("tool_calls", [])
-    called      = any(t.get("name") == "rag_search" for t in tool_calls)
-    should_call = "should not" not in description.lower()
+    expected = _get_eval_checks(example).get(key)  # bool or None
+    if expected is None:
+        return _skip(key)  # no strict expectation for this case
 
-    if should_call and called:
+    tool_calls = run.outputs.get("tool_calls", [])
+    called     = any(t.get("name") == "rag_search" for t in tool_calls)
+
+    if expected and called:
         return {"key": key, "score": 1, "comment": "rag_search was called as expected"}
-    elif not should_call and not called:
+    elif not expected and not called:
         return {"key": key, "score": 1, "comment": "rag_search was correctly NOT called"}
-    elif should_call and not called:
+    elif expected and not called:
         return {"key": key, "score": 0, "comment": "rag_search was NOT called but should have been"}
     else:
         return {"key": key, "score": 0, "comment": "rag_search was called but should NOT have been"}
@@ -205,7 +202,6 @@ Score 1 if the outcome matches what the description says should happen, 0 otherw
 EVAL: sit_e_stance
 What to check: {description}
 Valid stances: reassuring, asking_followups, flagging_bad_situation
-Expected: {sit_e_stance}
 {verdict_format}
 """,
     IS_DECLINED: """
@@ -238,7 +234,7 @@ def eval_batch_judge(run, example):
     Returns a list of score dicts, one per applicable key.
     """
     eval_checks = _get_eval_checks(example)
-    applicable  = [k for k in eval_checks if k in BATCH_JUDGE_KEYS]
+    applicable  = [k for k in eval_checks if k in BATCH_JUDGE_KEYS and eval_checks[k] is not None]
 
     if not applicable:
         return []
@@ -246,16 +242,27 @@ def eval_batch_judge(run, example):
     response         = _strip_query_type_tag(run.outputs.get("response", ""))
     conversation     = example.inputs.get("conversation", [])
     survey_context   = example.inputs.get("survey_context", {})
-    expected_behavior = _get_expected_behavior(example.outputs)
-
     rubric_blocks = []
     for key in applicable:
         template = RUBRICS[key]
         options  = VERDICT_OPTIONS.get(key, "")
+        # For bool/list/null fields, convert to a useful description for Haiku
+        raw_val = eval_checks[key]
+        if isinstance(raw_val, bool):
+            if raw_val:
+                description = "YES — expected"
+            else:
+                description = "This behavior should be ABSENT — score 1 if the response does NOT do this, 0 if it does"
+        elif isinstance(raw_val, list):
+            description = ", ".join(raw_val)
+        elif raw_val is None:
+            description = "not applicable"
+        else:
+            description = raw_val
+
         block = template.format(
-            description=eval_checks[key],
-            response_mode=example.outputs.get(RESPONSE_MODE, []),
-            sit_e_stance=example.outputs.get(SIT_E_STANCE, ""),
+            description=description,
+            response_mode=eval_checks.get(RESPONSE_MODE, []),
             survey_context=survey_context,
             scale=_QUALITY_SCALE,
             score_format=_QUALITY_FORMAT.format(key=key),
@@ -267,9 +274,6 @@ def eval_batch_judge(run, example):
 
 Conversation:
 {conversation}
-
-Expected behavior:
-{expected_behavior}
 
 AI response:
 {response}

@@ -21,6 +21,7 @@ takes an action (tool call), observes the result, then reasons again.
 """
 
 import json
+import re
 import uuid
 from pathlib import Path
 
@@ -167,6 +168,10 @@ async def stream_agent(
 
     run_id = str(uuid.uuid4())
     full_response = ""
+    # Buffer used to detect and suppress the <query_type>...</query_type> tag
+    # which may arrive split across multiple streaming tokens
+    tag_buffer = ""
+    in_tag = False
 
     async for event in graph.astream_events(
         {
@@ -189,13 +194,42 @@ async def stream_agent(
             if isinstance(chunk.content, list):
                 for block in chunk.content:
                     text = block.get("text", "") if isinstance(block, dict) else ""
-                    if text:
-                        full_response += text
-                        yield {"type": "token", "content": text}
+                    if not text:
+                        continue
+
+                    full_response += text
+
+                    # Strip <query_type>...</query_type> from the stream
+                    tag_buffer += text
+                    if in_tag:
+                        end = tag_buffer.find("</query_type>")
+                        if end != -1:
+                            # Tag closed — flush anything after it
+                            remainder = tag_buffer[end + len("</query_type>"):]
+                            tag_buffer = ""
+                            in_tag = False
+                            if remainder.strip():
+                                yield {"type": "token", "content": remainder}
+                        # Still inside tag — keep buffering, don't yield
+                    else:
+                        start = tag_buffer.find("<query_type>")
+                        if start != -1:
+                            # Yield any text before the tag, then start buffering
+                            before = tag_buffer[:start]
+                            tag_buffer = tag_buffer[start:]
+                            in_tag = True
+                            if before:
+                                yield {"type": "token", "content": before}
+                        else:
+                            # No tag in sight — safe to yield
+                            yield {"type": "token", "content": tag_buffer}
+                            tag_buffer = ""
+
+    clean_response = re.sub(r"<query_type>.*?</query_type>\n?", "", full_response, flags=re.IGNORECASE).strip()
 
     updated_history = list(conversation_history or [])
     updated_history.append({"role": "user", "content": message})
-    updated_history.append({"role": "assistant", "content": full_response})
+    updated_history.append({"role": "assistant", "content": clean_response})
     save_chat(chat_id, updated_history)
 
     yield {

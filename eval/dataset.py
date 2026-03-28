@@ -20,7 +20,7 @@ from langsmith import Client
 load_dotenv(override=True)
 
 DATASET_NAME = "cherrytree-advisor-evals"
-CASES_FILE = Path(__file__).parent / "cases.json"
+CASES_FILE = Path(__file__).parent / "eval_dataset.json"
 
 
 def load_cases():
