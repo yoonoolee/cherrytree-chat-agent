@@ -17,7 +17,7 @@ build/
 *.swp
 
 # Logs
-server.log
+*.log
 
 # OS
 .DS_Store
