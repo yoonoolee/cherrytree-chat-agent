@@ -7,6 +7,7 @@
 - Expand knowledge base from 21 → 50-100 articles
 - Build `AdvisorChat.js` React component and integrate into Survey page
 - Implement `suggest_form_value` and `calculate_equity` tools
+- Add proactive clause suggestions — agent surfaces additional clauses worth considering based on the user's situation, as part of normal chat responses (not a separate trigger)
 
 ---
 
@@ -55,7 +56,7 @@ Users can leave comments anywhere in their agreement (on a clause, a field, a se
 ## Completed
 
 - [x] FastAPI server with `/chat`, `/chat/stream`, `/health`, `/chats`, `/feedback` endpoints
-- [x] LangGraph ReAct agent with 3 tools (rag_search, read_form_data, check_completion)
+- [x] LangGraph ReAct agent with rag_search tool
 - [x] Streaming endpoint with SSE
 - [x] Live survey context fetched from Firestore on every message
 - [x] Pinecone knowledge base (21 articles ingested)

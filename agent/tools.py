@@ -27,7 +27,7 @@ def rag_search(query: str) -> str:
     # and finds the most similar documents
     results = pinecone_index.search(
         namespace="cherrytree",
-        query={"top_k": 100, "inputs": {"text": query}},
+        query={"top_k": 5, "inputs": {"text": query}},
         fields=["title", "content", "topic"]
     )
 

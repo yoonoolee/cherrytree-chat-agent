@@ -6,8 +6,8 @@ Python/FastAPI AI advisor service. Runs on Google Cloud Run. Integrated into the
 
 - **LLM:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)
 - **Agent framework:** LangGraph (ReAct pattern — reason → tool call → reason)
-- **Vector DB:** Pinecone (RAG, top-k=100, score threshold 0.80 — returns all docs then filters by relevance)
-- **Embeddings:** OpenAI `text-embedding-3-small`
+- **Vector DB:** Pinecone (RAG, top-k=5, score threshold 0.80)
+- **Embeddings:** Pinecone integrated embedding model (handled automatically at ingest and query time)
 - **Chat storage:** Firestore (`projects/{projectId}/chats/{chatId}`)
 - **Observability:** LangSmith
 - **Rate limiting:** slowapi (20/min + 200/hour per IP on `/chat` — blocks burst and sustained abuse)
